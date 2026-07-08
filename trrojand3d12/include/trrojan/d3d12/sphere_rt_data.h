@@ -17,6 +17,9 @@ namespace trrojan::d3d12 {
 
         winrt::com_ptr<ID3D12Resource> load(ID3D12GraphicsCommandList* command_list, D3D12_RESOURCE_STATES state, std::string const& path, std::uint32_t frame);
 
+        operator bool(void) const noexcept {
+            return (this->data_ != nullptr);
+        }
     private:
         void fit_bounding_box(const mmpld::list_header& header,
             const void* particles);

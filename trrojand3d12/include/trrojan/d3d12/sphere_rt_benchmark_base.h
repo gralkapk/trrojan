@@ -2,7 +2,7 @@
 
 #include "benchmark_base.h"
 
-#include "trrojan/d3d12/sphere_data.h"
+#include "trrojan/d3d12/sphere_rt_data.h"
 
 #include "SphereRTShaderStructs.hlsli"
 
@@ -73,6 +73,6 @@ namespace trrojan::d3d12 {
         RayGenConstantsStruct* ray_gen_constants_;
         RayTracingConstantsStruct* ray_tracing_constants_;
 
-        sphere_data data_;
+        sphere_rt_data data_;
     };
 } // namespace trrojan::d3d12

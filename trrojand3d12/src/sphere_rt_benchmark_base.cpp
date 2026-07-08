@@ -168,11 +168,10 @@ namespace trrojan::d3d12 {
         // Load the data if necessary.
         if (!this->data_) {
             log::instance().write_line(log_level::information, "Loading data set \""
-                "{}\" ...", cfg.data_set());
+                "{}\" ...", path);
             auto cmd_list = this->create_graphics_command_list();
-            auto upload = this->data_.load(cmd_list.get(), shader_code, cfg,
-                D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER
-                | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+            auto upload = this->data_.load(cmd_list.get(), D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER
+                | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, path, frame);
             device.close_and_execute_command_list(cmd_list);
 
             log::instance().write_line(log_level::verbose, "Waiting for data "
