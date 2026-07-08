@@ -20,6 +20,7 @@ file(GLOB_RECURSE DomainShaderFiles RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}" "${So
 file(GLOB_RECURSE GeometryShaderFiles RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}" "${SourceDirectory}/*GeometryShader*.hlsl")
 file(GLOB_RECURSE PixelShaderFiles RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}" "${SourceDirectory}/*PixelShader*.hlsl")
 file(GLOB_RECURSE ComputeShaderFiles RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}" "${SourceDirectory}/*ComputeShader*.hlsl")
+file(GLOB_RECURSE LibShaderFiles RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}" "${SourceDirectory}/*LibShader*.hlsl")
 file(GLOB_RECURSE ShaderHeaderFiles RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}" "${IncludeDirectory}/*.hlsli" "${SourceDirectory}/*.hlsli")
 set(ShaderFiles ${VertexShaderFiles} ${DomainShaderFiles} ${HullShaderFiles} ${GeometryShaderFiles} ${PixelShaderFiles} ${ComputeShaderFiles})
 
@@ -32,6 +33,10 @@ set_property(SOURCE ${ShaderFiles} PROPERTY VS_SHADER_ENABLE_DEBUG On)
 set_property(SOURCE ${ShaderFiles} PROPERTY VS_SHADER_FLAGS /Qembed_debug)
 set_property(SOURCE ${ShaderFiles} PROPERTY VS_SHADER_OBJECT_FILE_NAME "${ShaderOutputDirectory}/d3d12/%(Filename).cso")
 
+set_property(SOURCE ${LibShaderFiles} PROPERTY VS_SHADER_ENTRYPOINT "")
+set_property(SOURCE ${LibShaderFiles} PROPERTY VS_SHADER_MODEL 6.3)
+set_property(SOURCE ${LibShaderFiles} PROPERTY VS_SHADER_OBJECT_FILE_NAME "${ShaderOutputDirectory}/d3d12/%(Filename).cso")
+
 # Configure shader types
 set_property(SOURCE ${VertexShaderFiles} PROPERTY VS_SHADER_TYPE Vertex)
 set_property(SOURCE ${HullShaderFiles} PROPERTY VS_SHADER_TYPE Hull)
@@ -39,10 +44,11 @@ set_property(SOURCE ${DomainShaderFiles} PROPERTY VS_SHADER_TYPE Domain)
 set_property(SOURCE ${GeometryShaderFiles} PROPERTY VS_SHADER_TYPE Geometry)
 set_property(SOURCE ${PixelShaderFiles} PROPERTY VS_SHADER_TYPE Pixel)
 set_property(SOURCE ${ComputeShaderFiles} PROPERTY VS_SHADER_TYPE Compute)
+set_property(SOURCE ${LibShaderFiles} PROPERTY VS_SHADER_TYPE Library)
 
 # Add hlsli files such that we have them in the solution.
 file(GLOB_RECURSE ShaderHeaderFiles RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}" "${IncludeDirectory}/*.hlsli" "${SourceDirectory}/*.hlsli")
-set(ShaderFiles ${ShaderHeaderFiles} ${ShaderFiles})
+set(ShaderFiles ${LibShaderFiles} ${ShaderHeaderFiles} ${ShaderFiles})
 
 
 # Define the library target
