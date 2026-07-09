@@ -4,13 +4,27 @@
 #pragma once
 #endif /* _MSC_VER */
 
+struct AABB {
+    float3 lower;
+    float3 upper;
+};
+
+struct Particle
+{
+    float4 position; // xyz = position, w = radius
+    uint4 color; // rgba
+};
+
 #ifdef _MSC_VER
 // See https://msdn.microsoft.com/de-de/library/windows/desktop/bb509632(v=vs.85).aspx
 #pragma pack(push)
 #pragma pack(4)
+#define CB __declspec(align(16)) struct
+#else
+#define CB struct
 #endif /* _MSC_VER */
 
-cbuffer RayGenConstantsStruct CBUFFER(0) {
+CB RayGenConstantsStruct {
     float4x4 viewMatrixInv;
     float4x4 projectionMatrixInv;
     float4 cameraPosition;
@@ -19,9 +33,16 @@ cbuffer RayGenConstantsStruct CBUFFER(0) {
     uint2 renderTargetSize;
 };
 
-cbuffer RayTracingConstantsStruct CBUFFER(1) {
+CB RayTracingConstantsStruct
+{
     float spp;
     uint recursionDepth;
+};
+
+CB ComputeConstantsStruct
+{
+    uint3 dispatchSize;
+    uint num_particles;
 };
 
 #ifdef _MSC_VER
