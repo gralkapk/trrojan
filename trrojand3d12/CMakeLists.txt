@@ -27,7 +27,7 @@ set(ShaderFiles ${VertexShaderFiles} ${DomainShaderFiles} ${HullShaderFiles} ${G
 # Configure fxc
 set(ShaderOutputDirectory "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_CFG_INTDIR}")
 set_property(SOURCE ${ShaderFiles} PROPERTY VS_SHADER_ENTRYPOINT Main)
-set_property(SOURCE ${ShaderFiles} PROPERTY VS_SHADER_MODEL 6.0)
+set_property(SOURCE ${ShaderFiles} PROPERTY VS_SHADER_MODEL 6.3)
 #set_property(SOURCE ${ShaderFiles} PROPERTY VS_SHADER_FLAGS /Zi)
 set_property(SOURCE ${ShaderFiles} PROPERTY VS_SHADER_ENABLE_DEBUG On)
 set_property(SOURCE ${ShaderFiles} PROPERTY VS_SHADER_FLAGS /Qembed_debug)
