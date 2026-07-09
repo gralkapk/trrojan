@@ -53,6 +53,8 @@ namespace trrojan::d3d12 {
                 throw;
             }
 
+            _cnt_spheres = desc.number;
+
             retval->Unmap(0, nullptr);
 
             set_debug_object_name(data_.get(), path.c_str());
@@ -112,6 +114,8 @@ namespace trrojan::d3d12 {
                 throw;
             }
 
+            _cnt_spheres = list_header.particles;
+
             retval->Unmap(0, nullptr);
 
             set_debug_object_name(data_.get(), path.c_str());
@@ -122,6 +126,13 @@ namespace trrojan::d3d12 {
         }
 
         return retval;
+    }
+
+    void sphere_rt_data::clear() {
+        _bbox = {glm::vec3(0.0f), glm::vec3(0.0f)};
+        _max_radius = 0.0f;
+        data_ = nullptr;
+        _cnt_spheres = 0;
     }
 
     void sphere_rt_data::fit_bounding_box(const mmpld::list_header& header, const void* particles) {

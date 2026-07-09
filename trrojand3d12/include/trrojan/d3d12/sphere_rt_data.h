@@ -20,6 +20,32 @@ namespace trrojan::d3d12 {
         operator bool(void) const noexcept {
             return (this->data_ != nullptr);
         }
+
+        void clear();
+
+        const std::array<glm::vec3, 2>& bbox(void) const noexcept {
+            return this->_bbox;
+        }
+
+        const glm::vec3& bbox_start(void) const noexcept {
+            return this->_bbox[0];
+        }
+
+        const glm::vec3& bbox_end(void) const noexcept {
+            return this->_bbox[1];
+        }
+
+        UINT spheres(void) const noexcept {
+            return this->_cnt_spheres;
+        }
+
+        winrt::com_ptr<ID3D12Resource> data(void) const noexcept {
+            return this->data_;
+        }
+
+        const float max_radius(void) const noexcept {
+            return this->_max_radius;
+        }
     private:
         void fit_bounding_box(const mmpld::list_header& header,
             const void* particles);
@@ -28,5 +54,6 @@ namespace trrojan::d3d12 {
 
         std::array<glm::vec3, 2> _bbox;
         float _max_radius;
+        UINT _cnt_spheres;
     };
 }
