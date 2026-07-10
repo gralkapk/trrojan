@@ -4,6 +4,11 @@
 #pragma once
 #endif /* _MSC_VER */
 
+#define RaygenShaderName SphereRTRaygenShader
+#define IntersectionShaderName SphereRTIntersectionShader
+#define ClosestHitShaderName SphereRTClosestHitShader
+#define MissShaderName SphereRTMissShader
+
 struct AABB {
     float3 lower;
     float3 upper;

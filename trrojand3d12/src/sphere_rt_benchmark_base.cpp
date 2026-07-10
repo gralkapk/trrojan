@@ -14,6 +14,21 @@
 #include "SphereRTShaderStructs.hlsli"
 
 namespace trrojan::d3d12 {
+
+#define STR_(X) #X
+#define STR(X) STR_(X)
+
+// clang-format off
+const wchar_t* raygenShaderName            = L"" STR(RaygenShaderName) "";
+const wchar_t* intersectionShaderName      = L"" STR(IntersectionShaderName) "";
+const wchar_t* closestHitShaderName        = L"" STR(ClosestHitShaderName) "";
+const wchar_t* missShaderName              = L"" STR(MissShaderName) "";
+const wchar_t* hitGroupName                = L"HitGroup";
+// clang-format on
+
+#undef STR_
+#undef STR
+
 sphere_rt_benchmark_base::sphere_rt_benchmark_base(const std::string& name) : benchmark_base{name} {
     this->_default_configs.add_factor(factor::from_manifestations(
         sphere_rt_rendering_configuration::factor_gpu_counter_iterations, static_cast<unsigned int>(7)));
@@ -146,13 +161,13 @@ void sphere_rt_benchmark_base::on_device_switch(device& device) {
         lib->SetDXILLibrary(&libdxil);
 
         std::vector<wchar_t const*> exportNames = {
-            L"raygenShaderName", L"missShaderName", L"intersectionShaderName", L"closestHitShaderName"};
+            raygenShaderName, missShaderName, intersectionShaderName, closestHitShaderName};
         lib->DefineExports(exportNames.data(), exportNames.size());
 
         auto hitGroup = raytracingPipelineDesc.CreateSubobject<CD3DX12_HIT_GROUP_SUBOBJECT>();
-        hitGroup->SetIntersectionShaderImport(L"intersectionShaderName");
-        hitGroup->SetClosestHitShaderImport(L"closestHitShaderName");
-        hitGroup->SetHitGroupExport(L"hitGroupName");
+        hitGroup->SetIntersectionShaderImport(intersectionShaderName);
+        hitGroup->SetClosestHitShaderImport(closestHitShaderName);
+        hitGroup->SetHitGroupExport(hitGroupName);
         hitGroup->SetHitGroupType(D3D12_HIT_GROUP_TYPE_PROCEDURAL_PRIMITIVE);
 
         const auto shaderConfig = raytracingPipelineDesc.CreateSubobject<CD3DX12_RAYTRACING_SHADER_CONFIG_SUBOBJECT>();
@@ -193,6 +208,35 @@ void sphere_rt_benchmark_base::on_device_switch(device& device) {
     accumulation_buffers_.clear();
 
     create_descriptor_heaps(d3dDevice, CBV_SRV_UAV_Desc_Heap_Slots::Count);
+
+    // create shader table
+    winrt::com_ptr<ID3D12StateObjectProperties> stateObjectProperties;
+    auto hr = raytracing_pipeline_.as(IID_PPV_ARGS(&stateObjectProperties));
+    if (FAILED(hr)) {
+        throw std::system_error(hr, trrojan::com_category());
+    }
+    assert(stateObjectProperties != nullptr);
+    
+    auto sbt_ = ShaderTable();
+    sbt_.SetRayGenRecord(
+            ShaderRecord(reinterpret_cast<UINT8*>(stateObjectProperties->GetShaderIdentifier(raygenShaderName))))
+        .AddMissRecord(ShaderRecord(reinterpret_cast<UINT8*>(stateObjectProperties->GetShaderIdentifier(missShaderName))))
+        .AddHitGroupRecord(
+            ShaderRecord(reinterpret_cast<UINT8*>(stateObjectProperties->GetShaderIdentifier(hitGroupName))));
+
+    auto const sbt_size = sbt_.Serialize(nullptr, 0, &shader_table_descriptor_);
+    sbtBuffer_ = create_upload_buffer(d3dDevice.get(), sbt_size);
+    assert(sbtBuffer_ != nullptr);
+    set_debug_object_name(sbtBuffer_, "ShaderBindingTable");
+    {
+        void* data;
+        auto hr = sbtBuffer_->Map(0, nullptr, &data);
+        if (FAILED(hr)) {
+            throw std::system_error(hr, trrojan::com_category());
+        }
+        sbt_.Serialize(data, sbt_size, &shader_table_descriptor_);
+        sbtBuffer_->Unmap(0, nullptr);
+    }
 }
 
 trrojan::result sphere_rt_benchmark_base::on_run(d3d12::device& device, const configuration& config,
@@ -244,7 +288,69 @@ trrojan::result sphere_rt_benchmark_base::on_run(d3d12::device& device, const co
         }
     }
 
-    // populate descriptors
+
+    std::vector<winrt::com_ptr<ID3D12GraphicsCommandList>> cmd_lists(pipeline_depth());
+    std::vector<winrt::com_ptr<ID3D12GraphicsCommandList5>> dxr_cmd_lists(pipeline_depth());
+    for (UINT i = 0; i < pipeline_depth(); ++i) {
+        cmd_lists[i] = this->create_graphics_command_list(i);
+        auto hr = cmd_lists[i]->QueryInterface(IID_PPV_ARGS(&dxr_cmd_lists[i]));
+        if (FAILED(hr)) {
+            throw std::system_error(hr, trrojan::com_category());
+        }
+    }
+    // TODO TEST basic rendering command list
+    {
+        for (UINT i = 0; i < pipeline_depth(); ++i) {
+            auto& dxr_cmd_list = dxr_cmd_lists[i];
+            auto heap = _descriptor_heaps[i].get();
+            // TODO record commands
+            dxr_cmd_list->SetComputeRootSignature(global_root_sig_.get());
+            dxr_cmd_list->SetDescriptorHeaps(1, &heap);
+
+            // set resource views
+            // TODO set UAV table
+            dxr_cmd_list->SetComputeRootDescriptorTable(
+                GlobalRootSigParams::OutputViewSlot, heap->GetGPUDescriptorHandleForHeapStart());
+            dxr_cmd_list->SetComputeRootShaderResourceView(
+                GlobalRootSigParams::AccelerationStructureSlot, topLevelBuffer_->GetGPUVirtualAddress());
+            dxr_cmd_list->SetComputeRootConstantBufferView(
+                GlobalRootSigParams::RayGenConstantsSlot, cb_ray_->GetGPUVirtualAddress());
+            dxr_cmd_list->SetComputeRootConstantBufferView(
+                GlobalRootSigParams::RayTracingConstantsSlot, cb_raytracing_->GetGPUVirtualAddress());
+            dxr_cmd_list->SetComputeRootShaderResourceView(
+                GlobalRootSigParams::ParticleBufferSlot, data_.data()->GetGPUVirtualAddress());
+
+            // set the pipeline state
+            dxr_cmd_list->SetPipelineState1(raytracing_pipeline_.get());
+
+            // dispatch rays
+            D3D12_DISPATCH_RAYS_DESC dispatchRaysDesc = {};
+            // raygen
+            dispatchRaysDesc.RayGenerationShaderRecord.StartAddress =
+                sbtBuffer_->GetGPUVirtualAddress();
+            dispatchRaysDesc.RayGenerationShaderRecord.SizeInBytes = shader_table_descriptor_.raygen_record_size_;
+            // miss
+            dispatchRaysDesc.MissShaderTable.StartAddress =
+                sbtBuffer_->GetGPUVirtualAddress() + shader_table_descriptor_.miss_records_offset_;
+            dispatchRaysDesc.MissShaderTable.SizeInBytes = shader_table_descriptor_.miss_records_size_;
+            dispatchRaysDesc.MissShaderTable.StrideInBytes = shader_table_descriptor_.miss_records_stride_;
+            // hitgroup
+            dispatchRaysDesc.HitGroupTable.StartAddress =
+                sbtBuffer_->GetGPUVirtualAddress() + shader_table_descriptor_.hitgroup_records_offset_;
+            dispatchRaysDesc.HitGroupTable.SizeInBytes = shader_table_descriptor_.hitgroup_records_size_;
+            dispatchRaysDesc.HitGroupTable.StrideInBytes = shader_table_descriptor_.hitgroup_records_stride_;
+
+            const auto viewport = config.get<benchmark_base::viewport_type>(factor_viewport);
+            dispatchRaysDesc.Width = viewport[0];
+            dispatchRaysDesc.Height = viewport[1];
+            dispatchRaysDesc.Depth = 1;
+
+            dxr_cmd_list->DispatchRays(&dispatchRaysDesc);
+
+            // TODO copy the render target to the back buffer
+
+        }
+    }
 
     return trrojan::result();
 }
@@ -291,8 +397,6 @@ void sphere_rt_benchmark_base::create_acceleration_structure(
     auto aabb_buffer = create_buffer(device.d3d_device(), data_.spheres() * sizeof(AABB), 0,
         D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
     set_debug_object_name(aabb_buffer, "AABBBuffer");
-
-    // TODO set constant buffer for compute step
 
     // acceleration data structure
     {
@@ -379,7 +483,7 @@ void sphere_rt_benchmark_base::create_acceleration_structure(
 
         // build acceleration structure
         {
-            // TODO need specific frame?
+            // TODO need specific frame? (this->buffer_index())
             auto heap = _descriptor_heaps[0].get();
             assert(heap != nullptr);
             assert(heap->GetDesc().Type == D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);

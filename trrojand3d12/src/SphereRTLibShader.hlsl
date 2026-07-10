@@ -46,17 +46,17 @@ struct RayPayload
 };
 
 [shader("raygeneration")]
-void RayGenShader()
+void RaygenShaderName()
 {
 }
 
 [shader("intersection")]
-void IntersectionShader()
+void IntersectionShaderName()
 {
 }
 
 [shader("closesthit")]
-void ClosestHitShader(inout RayPayload payload, in Attributes attr)
+void ClosestHitShaderName(inout RayPayload payload, in Attributes attr)
 {
 }
 

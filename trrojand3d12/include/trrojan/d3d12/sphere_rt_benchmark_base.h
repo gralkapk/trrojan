@@ -3,6 +3,7 @@
 #include "benchmark_base.h"
 
 #include "trrojan/d3d12/sphere_rt_data.h"
+#include "trrojan/d3d12/shader_table.h"
 
 #include "SphereRTShaderStructs.hlsli"
 
@@ -60,6 +61,7 @@ private:
 
     winrt::com_ptr<ID3D12Resource> bottomLevelBuffer_;
     winrt::com_ptr<ID3D12Resource> topLevelBuffer_;
+    winrt::com_ptr<ID3D12Resource> sbtBuffer_;
 
     std::vector<winrt::com_ptr<ID3D12Resource>> render_targets_;
     std::vector<winrt::com_ptr<ID3D12Resource>> accumulation_buffers_;
@@ -69,6 +71,7 @@ private:
     ComputeConstantsStruct* compute_constants_;
 
     sphere_rt_data data_;
+    ShaderBindingTableDescriptor shader_table_descriptor_;
 
     trrojan::perspective_camera _camera;
 };
