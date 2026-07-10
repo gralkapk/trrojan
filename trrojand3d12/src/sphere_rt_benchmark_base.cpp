@@ -192,7 +192,7 @@ void sphere_rt_benchmark_base::on_device_switch(device& device) {
     render_targets_.clear();
     accumulation_buffers_.clear();
 
-    this->create_descriptor_heaps(d3dDevice, CBV_SRV_UAV_Desc_Heap_Slots::Count);
+    create_descriptor_heaps(d3dDevice, CBV_SRV_UAV_Desc_Heap_Slots::Count);
 }
 
 trrojan::result sphere_rt_benchmark_base::on_run(d3d12::device& device, const configuration& config,
@@ -221,6 +221,7 @@ trrojan::result sphere_rt_benchmark_base::on_run(d3d12::device& device, const co
         device.wait_for_gpu();
 
         // TODO create acceleration data structure
+        create_acceleration_structure(device, cmd_list.get());
     }
 
     configure_camera(config);
@@ -270,8 +271,22 @@ void sphere_rt_benchmark_base::create_acceleration_structure(
     d3d12::device& device, ID3D12GraphicsCommandList* cmd_list) {
     auto d3dDevice = device.d3d_device();
     winrt::com_ptr<ID3D12Device5> dxrDevice;
-    d3dDevice->QueryInterface(IID_PPV_ARGS(&dxrDevice));
-    assert(dxrDevice != nullptr);
+    {
+        auto hr = d3dDevice->QueryInterface(IID_PPV_ARGS(&dxrDevice));
+        if (FAILED(hr)) {
+            throw std::system_error(hr, trrojan::com_category());
+        }
+        assert(dxrDevice != nullptr);
+    }
+
+    winrt::com_ptr<ID3D12GraphicsCommandList5> dxrCmdList;
+    {
+        auto hr = cmd_list->QueryInterface(IID_PPV_ARGS(&dxrCmdList));
+        if (FAILED(hr)) {
+            throw std::system_error(hr, trrojan::com_category());
+        }
+        assert(dxrCmdList != nullptr);
+    }
 
     auto aabb_buffer = create_buffer(device.d3d_device(), data_.spheres() * sizeof(AABB), 0,
         D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
@@ -317,15 +332,15 @@ void sphere_rt_benchmark_base::create_acceleration_structure(
             D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
         set_debug_object_name(scratchBuffer, "ScratchBuffer");
 
-        auto topLevelBuffer = create_buffer(device.d3d_device(), topLevelPrebuildInfo.ResultDataMaxSizeInBytes, 0,
+        topLevelBuffer_ = create_buffer(device.d3d_device(), topLevelPrebuildInfo.ResultDataMaxSizeInBytes, 0,
             D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_HEAP_TYPE_DEFAULT,
             D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE);
-        set_debug_object_name(topLevelBuffer, "TopLevelBuffer");
+        set_debug_object_name(topLevelBuffer_, "TopLevelBuffer");
 
-        auto bottomLevelBuffer = create_buffer(device.d3d_device(), bottomLevelPrebuildInfo.ResultDataMaxSizeInBytes, 0,
+        bottomLevelBuffer_ = create_buffer(device.d3d_device(), bottomLevelPrebuildInfo.ResultDataMaxSizeInBytes, 0,
             D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_HEAP_TYPE_DEFAULT,
             D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE);
-        set_debug_object_name(bottomLevelBuffer, "BottomLevelBuffer");
+        set_debug_object_name(bottomLevelBuffer_, "BottomLevelBuffer");
 
         auto instanceDescsBuffer =
             create_upload_buffer(device.d3d_device().get(), sizeof(D3D12_RAYTRACING_INSTANCE_DESC));
@@ -335,7 +350,7 @@ void sphere_rt_benchmark_base::create_acceleration_structure(
         instanceDesc.Transform[0][0] = instanceDesc.Transform[1][1] = instanceDesc.Transform[2][2] = 1.f;
         instanceDesc.InstanceMask = 1;
         instanceDesc.InstanceID = 0;
-        instanceDesc.AccelerationStructure = bottomLevelBuffer->GetGPUVirtualAddress();
+        instanceDesc.AccelerationStructure = bottomLevelBuffer_->GetGPUVirtualAddress();
 
         {
             std::uint8_t* mappedData = nullptr;
@@ -354,24 +369,64 @@ void sphere_rt_benchmark_base::create_acceleration_structure(
         D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC topLevelBuildDesc = {};
         topLevelBuildDesc.Inputs = topLevelInputs;
         topLevelBuildDesc.ScratchAccelerationStructureData = scratchBuffer->GetGPUVirtualAddress();
-        topLevelBuildDesc.DestAccelerationStructureData = topLevelBuffer->GetGPUVirtualAddress();
+        topLevelBuildDesc.DestAccelerationStructureData = topLevelBuffer_->GetGPUVirtualAddress();
 
         // set bottom level desc
         D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC bottomLevelBuildDesc = {};
         bottomLevelBuildDesc.Inputs = bottomLevelInputs;
         bottomLevelBuildDesc.ScratchAccelerationStructureData = scratchBuffer->GetGPUVirtualAddress();
-        bottomLevelBuildDesc.DestAccelerationStructureData = bottomLevelBuffer->GetGPUVirtualAddress();
+        bottomLevelBuildDesc.DestAccelerationStructureData = bottomLevelBuffer_->GetGPUVirtualAddress();
 
         // build acceleration structure
         {
+            // TODO need specific frame?
+            auto heap = _descriptor_heaps[0].get();
+            assert(heap != nullptr);
+            assert(heap->GetDesc().Type == D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+
             // compute AABBs for spheres
             {
+                dxrCmdList->SetComputeRootSignature(compute_root_sig_.get());
+                dxrCmdList->SetPipelineState(compute_pipeline_.get());
 
+                dxrCmdList->SetDescriptorHeaps(1, &heap);
+
+                // set views on data
+                dxrCmdList->SetComputeRootShaderResourceView(
+                    ComputeRootSigParams::ParticleBufferSlot, data_.data()->GetGPUVirtualAddress());
+                dxrCmdList->SetComputeRootUnorderedAccessView(
+                    ComputeRootSigParams::AABBBufferSlot, aabb_buffer->GetGPUVirtualAddress());
+                dxrCmdList->SetComputeRootConstantBufferView(
+                    ComputeRootSigParams::ComputeConstantsSlot, cb_compute_->GetGPUVirtualAddress());
+
+                // dispatch compute shader to compute AABBs
+                auto const num_particles = data_.spheres();
+                auto base_size = std::ceilf(std::sqrtf(num_particles));
+                auto const thread_group_size_x = static_cast<UINT>(base_size);
+                auto const thread_group_size_y = static_cast<UINT>(num_particles / base_size + 1);
+                compute_constants_->dispatchSize = {thread_group_size_x, thread_group_size_y, 1};
+                compute_constants_->num_particles = num_particles;
+                dxrCmdList->Dispatch(thread_group_size_x / 32 + 1, thread_group_size_y, 1);
+
+                // set barrier on AABB buffer to make sure compute shader is done before building acceleration structure
+                auto barrier = CD3DX12_RESOURCE_BARRIER::UAV(aabb_buffer.get());
+                dxrCmdList->ResourceBarrier(1, &barrier);
             }
 
             // build bottom level
+            {
+                dxrCmdList->BuildRaytracingAccelerationStructure(&bottomLevelBuildDesc, 0, nullptr);
+                auto barrier = CD3DX12_RESOURCE_BARRIER::UAV(bottomLevelBuffer_.get());
+                dxrCmdList->ResourceBarrier(1, &barrier);
+            }
 
             // build top level
+            {
+                dxrCmdList->BuildRaytracingAccelerationStructure(&topLevelBuildDesc, 0, nullptr);
+            }
+
+            device.close_and_execute_command_list(dxrCmdList.get());
+            device.wait_for_gpu();
         }
     }
 }

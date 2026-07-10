@@ -58,6 +58,9 @@ private:
     winrt::com_ptr<ID3D12Resource> cb_raytracing_;
     winrt::com_ptr<ID3D12Resource> cb_compute_;
 
+    winrt::com_ptr<ID3D12Resource> bottomLevelBuffer_;
+    winrt::com_ptr<ID3D12Resource> topLevelBuffer_;
+
     std::vector<winrt::com_ptr<ID3D12Resource>> render_targets_;
     std::vector<winrt::com_ptr<ID3D12Resource>> accumulation_buffers_;
 
