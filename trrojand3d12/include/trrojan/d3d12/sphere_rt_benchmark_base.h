@@ -25,10 +25,8 @@ enum Value {
 namespace ComputeRootSigParams {
 enum Value {
     ParticleBufferSlot = 0,
-    ListEntriesBufferSlot,
     AABBBufferSlot,
     ComputeConstantsSlot,
-    RadiiBufferSlot,
     Count
 };
 }
@@ -53,15 +51,19 @@ private:
     void create_acceleration_structure(d3d12::device& device, ID3D12GraphicsCommandList* cmd_list);
 
     winrt::com_ptr<ID3D12RootSignature> global_root_sig_;
+    winrt::com_ptr<ID3D12RootSignature> compute_root_sig_;
     winrt::com_ptr<ID3D12StateObject> raytracing_pipeline_;
+    winrt::com_ptr<ID3D12PipelineState> compute_pipeline_;
     winrt::com_ptr<ID3D12Resource> cb_ray_;
     winrt::com_ptr<ID3D12Resource> cb_raytracing_;
+    winrt::com_ptr<ID3D12Resource> cb_compute_;
 
     std::vector<winrt::com_ptr<ID3D12Resource>> render_targets_;
     std::vector<winrt::com_ptr<ID3D12Resource>> accumulation_buffers_;
 
     RayGenConstantsStruct* ray_gen_constants_;
     RayTracingConstantsStruct* ray_tracing_constants_;
+    ComputeConstantsStruct* compute_constants_;
 
     sphere_rt_data data_;
 

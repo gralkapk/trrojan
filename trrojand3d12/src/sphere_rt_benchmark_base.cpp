@@ -78,6 +78,18 @@ void sphere_rt_benchmark_base::on_device_switch(device& device) {
         ray_tracing_constants_ = static_cast<RayTracingConstantsStruct*>(ptr);
     }
 
+    // Compute constant buffer
+    {
+        cb_compute_ = create_constant_buffer(d3dDevice, sizeof(ComputeConstantsStruct));
+        set_debug_object_name(cb_compute_, "ComputeConstants");
+        void* ptr;
+        auto hr = cb_compute_->Map(0, nullptr, &ptr);
+        if (FAILED(hr)) {
+            throw std::system_error(hr, trrojan::com_category());
+        }
+        compute_constants_ = static_cast<ComputeConstantsStruct*>(ptr);
+    }
+
     // global root signature
     {
         CD3DX12_ROOT_PARAMETER rootParams[GlobalRootSigParams::Count];
@@ -105,12 +117,28 @@ void sphere_rt_benchmark_base::on_device_switch(device& device) {
 
     // compute root signature
     {
-        // TODO: implement compute root signature
+        CD3DX12_ROOT_PARAMETER rootParams[ComputeRootSigParams::Count];
+        rootParams[ComputeRootSigParams::ParticleBufferSlot].InitAsShaderResourceView(0);
+        rootParams[ComputeRootSigParams::AABBBufferSlot].InitAsUnorderedAccessView(0);
+        rootParams[ComputeRootSigParams::ComputeConstantsSlot].InitAsConstantBufferView(0);
+        CD3DX12_ROOT_SIGNATURE_DESC computeRootSigDesc(ARRAYSIZE(rootParams), rootParams);
+        winrt::com_ptr<ID3DBlob> signature;
+        winrt::com_ptr<ID3DBlob> error;
+        auto hr = D3D12SerializeRootSignature(
+            &computeRootSigDesc, D3D_ROOT_SIGNATURE_VERSION_1, signature.put(), error.put());
+        if (FAILED(hr)) {
+            throw std::system_error(hr, trrojan::com_category());
+        }
+        hr = d3dDevice->CreateRootSignature(
+            1, signature->GetBufferPointer(), signature->GetBufferSize(), IID_PPV_ARGS(&compute_root_sig_));
+        if (FAILED(hr)) {
+            throw std::system_error(hr, trrojan::com_category());
+        }
     }
 
     // pipeline state object
     {
-        const auto loaded_lib = plugin::load_shader_asset("raytracing_pipeline.cso");
+        const auto loaded_lib = plugin::load_shader_asset("SphereRTLibShader.cso");
         D3D12_SHADER_BYTECODE libdxil = CD3DX12_SHADER_BYTECODE{loaded_lib.data(), loaded_lib.size()};
 
         CD3DX12_STATE_OBJECT_DESC raytracingPipelineDesc{D3D12_STATE_OBJECT_TYPE_RAYTRACING_PIPELINE};
@@ -141,6 +169,20 @@ void sphere_rt_benchmark_base::on_device_switch(device& device) {
         pipelineConfig->Config(1);
 
         auto hr = dxrDevice->CreateStateObject(raytracingPipelineDesc, IID_PPV_ARGS(&raytracing_pipeline_));
+        if (FAILED(hr)) {
+            throw std::system_error(hr, trrojan::com_category());
+        }
+    }
+
+    // compute pipeline state object
+    {
+        const auto loaded_compute_shader = plugin::load_shader_asset("SphereRTComputeShader.cso");
+
+        D3D12_COMPUTE_PIPELINE_STATE_DESC computePsoDesc = {};
+        computePsoDesc.pRootSignature = compute_root_sig_.get();
+        computePsoDesc.CS = CD3DX12_SHADER_BYTECODE{loaded_compute_shader.data(), loaded_compute_shader.size()};
+
+        auto hr = dxrDevice->CreateComputePipelineState(&computePsoDesc, IID_PPV_ARGS(&compute_pipeline_));
         if (FAILED(hr)) {
             throw std::system_error(hr, trrojan::com_category());
         }
