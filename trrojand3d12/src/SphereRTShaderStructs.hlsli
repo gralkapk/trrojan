@@ -28,21 +28,24 @@ CB RayGenConstantsStruct {
     float4x4 viewMatrixInv;
     float4x4 projectionMatrixInv;
     float4 cameraPosition;
+    uint2 renderTargetSize;
     float zNear;
     float zFar;
-    uint2 renderTargetSize;
+    float padding[24];
 };
 
 CB RayTracingConstantsStruct
 {
     float spp;
     uint recursionDepth;
+    float padding[60];
 };
 
 CB ComputeConstantsStruct
 {
     uint3 dispatchSize;
     uint num_particles;
+    float padding[60];
 };
 
 #ifdef _MSC_VER
