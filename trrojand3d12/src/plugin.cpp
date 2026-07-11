@@ -17,6 +17,8 @@
 #include "trrojan/d3d12/sphere_benchmark.h"
 #include "trrojan/d3d12/sphere_streaming_benchmark.h"
 
+#include "trrojan/d3d12/sphere_rt_benchmark_base.h"
+
 
 /// <summary>
 /// Handle of the plugin DLL.
@@ -144,6 +146,7 @@ size_t trrojan::d3d12::plugin::create_benchmarks(benchmark_list& dst) const {
     auto retval = dst.size();
     dst.emplace_back(std::make_shared<empty_benchmark>());
     dst.emplace_back(std::make_shared<sphere_benchmark>());
+    dst.emplace_back(std::make_shared<sphere_rt_benchmark_base>());
 #if !defined(TRROJAN_FOR_UWP)
     dst.emplace_back(std::make_shared<sphere_streaming_benchmark>());
 #endif /* !defined(TRROJAN_FOR_UWP) */
