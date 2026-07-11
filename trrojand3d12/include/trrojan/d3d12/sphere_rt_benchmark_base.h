@@ -1,6 +1,8 @@
 #pragma once
 
-#include "benchmark_base.h"
+#include "trrojan/d3d12/benchmark_base.h"
+
+#include "trrojan/d3d12/export.h"
 
 #include "trrojan/d3d12/sphere_rt_data.h"
 #include "trrojan/d3d12/shader_table.h"
@@ -32,12 +34,14 @@ enum Value {
 };
 }
 
-class sphere_rt_benchmark_base : public benchmark_base {
+class TRROJAND3D12_API sphere_rt_benchmark_base : public benchmark_base {
 public:
+    //sphere_rt_benchmark_base(const std::string& name);
+    sphere_rt_benchmark_base();
+
     virtual ~sphere_rt_benchmark_base(void) = default;
 
-protected:
-    sphere_rt_benchmark_base(const std::string& name);
+    void optimise_order(configuration_set& inOutConfs) override;
 
     bool can_run(trrojan::environment env, trrojan::device device) const noexcept override;
 

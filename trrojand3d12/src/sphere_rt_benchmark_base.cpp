@@ -29,7 +29,7 @@ const wchar_t* hitGroupName                = L"HitGroup";
 #undef STR_
 #undef STR
 
-sphere_rt_benchmark_base::sphere_rt_benchmark_base(const std::string& name) : benchmark_base{name} {
+sphere_rt_benchmark_base::sphere_rt_benchmark_base() : benchmark_base("rt-sphere-renderer") {
     this->_default_configs.add_factor(factor::from_manifestations(
         sphere_rt_rendering_configuration::factor_gpu_counter_iterations, static_cast<unsigned int>(7)));
     this->_default_configs.add_factor(factor::from_manifestations(
@@ -42,6 +42,11 @@ sphere_rt_benchmark_base::sphere_rt_benchmark_base(const std::string& name) : be
         factor::from_manifestations(sphere_rt_rendering_configuration::factor_rec_depth, static_cast<unsigned int>(0)));
 
     this->add_default_manoeuvre();
+}
+
+void sphere_rt_benchmark_base::optimise_order(configuration_set& inOutConfs) {
+    inOutConfs.optimise_order({sphere_rt_rendering_configuration::factor_data_set,
+        sphere_rt_rendering_configuration::factor_frame, benchmark_base::factor_device});
 }
 
 bool sphere_rt_benchmark_base::can_run(trrojan::environment env, trrojan::device device) const noexcept {
@@ -108,6 +113,7 @@ void sphere_rt_benchmark_base::on_device_switch(device& device) {
     // global root signature
     {
         CD3DX12_ROOT_PARAMETER rootParams[GlobalRootSigParams::Count];
+        ZeroMemory(rootParams, sizeof(rootParams));
         CD3DX12_DESCRIPTOR_RANGE uavRange;
         uavRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 2, 0);
         rootParams[GlobalRootSigParams::OutputViewSlot].InitAsDescriptorTable(1, &uavRange);
@@ -133,6 +139,7 @@ void sphere_rt_benchmark_base::on_device_switch(device& device) {
     // compute root signature
     {
         CD3DX12_ROOT_PARAMETER rootParams[ComputeRootSigParams::Count];
+        ZeroMemory(rootParams, sizeof(rootParams));
         rootParams[ComputeRootSigParams::ParticleBufferSlot].InitAsShaderResourceView(0);
         rootParams[ComputeRootSigParams::AABBBufferSlot].InitAsUnorderedAccessView(0);
         rootParams[ComputeRootSigParams::ComputeConstantsSlot].InitAsConstantBufferView(0);
@@ -153,7 +160,7 @@ void sphere_rt_benchmark_base::on_device_switch(device& device) {
 
     // pipeline state object
     {
-        const auto loaded_lib = plugin::load_shader_asset("SphereRTLibShader.cso");
+        const auto loaded_lib = plugin::load_resource(MAKEINTRESOURCE(3000), _T("SHADER"));
         D3D12_SHADER_BYTECODE libdxil = CD3DX12_SHADER_BYTECODE{loaded_lib.data(), loaded_lib.size()};
 
         CD3DX12_STATE_OBJECT_DESC raytracingPipelineDesc{D3D12_STATE_OBJECT_TYPE_RAYTRACING_PIPELINE};
@@ -191,7 +198,7 @@ void sphere_rt_benchmark_base::on_device_switch(device& device) {
 
     // compute pipeline state object
     {
-        const auto loaded_compute_shader = plugin::load_shader_asset("SphereRTComputeShader.cso");
+        const auto loaded_compute_shader = plugin::load_resource(MAKEINTRESOURCE(3001), _T("SHADER"));
 
         D3D12_COMPUTE_PIPELINE_STATE_DESC computePsoDesc = {};
         computePsoDesc.pRootSignature = compute_root_sig_.get();
@@ -265,6 +272,7 @@ trrojan::result sphere_rt_benchmark_base::on_run(d3d12::device& device, const co
         device.wait_for_gpu();
 
         // TODO create acceleration data structure
+        reset_command_list(cmd_list);
         create_acceleration_structure(device, cmd_list.get());
     }
 
@@ -348,7 +356,20 @@ trrojan::result sphere_rt_benchmark_base::on_run(d3d12::device& device, const co
             dxr_cmd_list->DispatchRays(&dispatchRaysDesc);
 
             // TODO copy the render target to the back buffer
+            transition_resource(cmd_lists[i].get(), render_targets_[i].get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+                D3D12_RESOURCE_STATE_COPY_SOURCE);
 
+            enable_target(cmd_lists[i].get(), i, D3D12_RESOURCE_STATE_COPY_DEST);
+            copy_to_target(cmd_lists[i].get(), render_targets_[i].get(), i);
+            disable_target(cmd_lists[i].get(), i, D3D12_RESOURCE_STATE_COPY_DEST);
+
+            transition_resource(cmd_lists[i].get(), render_targets_[i].get(), D3D12_RESOURCE_STATE_COPY_SOURCE,
+                D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+
+            device.close_and_execute_command_list(cmd_lists[i]);
+            present_target(config);
+
+            device.wait_for_gpu();
         }
     }
 
@@ -529,7 +550,7 @@ void sphere_rt_benchmark_base::create_acceleration_structure(
                 dxrCmdList->BuildRaytracingAccelerationStructure(&topLevelBuildDesc, 0, nullptr);
             }
 
-            device.close_and_execute_command_list(dxrCmdList.get());
+            device.close_and_execute_command_list(cmd_list);
             device.wait_for_gpu();
         }
     }
