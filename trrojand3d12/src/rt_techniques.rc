@@ -1,0 +1,2 @@
+3000 SHADER d3d12\SphereRTLibShader.cso
+3001 SHADER d3d12\SphereRTComputeShader.cso
