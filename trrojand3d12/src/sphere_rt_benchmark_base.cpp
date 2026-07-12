@@ -278,6 +278,27 @@ trrojan::result sphere_rt_benchmark_base::on_run(d3d12::device& device, const co
 
     configure_camera(config);
 
+    // set raygen constants
+    {
+        auto const pos = _camera.get_look_from();
+        ray_gen_constants_->cameraPosition = DirectX::XMFLOAT3(pos.x, pos.y, pos.z);
+        auto const view_inv = _camera.get_inverse_view_mx();
+        auto const proj_inv = _camera.get_inverse_projection_mx();
+        ray_gen_constants_->viewMatrixInv = DirectX::XMFLOAT4X4(&view_inv[0][0]);
+        ray_gen_constants_->projectionMatrixInv = DirectX::XMFLOAT4X4(&proj_inv[0][0]);
+        const auto viewport = config.get<benchmark_base::viewport_type>(factor_viewport);
+        ray_gen_constants_->renderTargetSize =
+            DirectX::XMUINT2(viewport[0], viewport[1]);
+        ray_gen_constants_->zNear = _camera.get_near_plane_dist();
+        ray_gen_constants_->zFar = _camera.get_far_plane_dist();
+    }
+
+    // set ray tracing constants
+    {
+        ray_tracing_constants_->spp = 1;
+        ray_tracing_constants_->recursionDepth = 0;
+    }
+
     // create the UAVs for the rt render targets
     if (render_targets_.empty() || accumulation_buffers_.empty()) {
         const auto viewport = config.get<benchmark_base::viewport_type>(factor_viewport);
@@ -366,9 +387,17 @@ trrojan::result sphere_rt_benchmark_base::on_run(d3d12::device& device, const co
             transition_resource(cmd_lists[i].get(), render_targets_[i].get(), D3D12_RESOURCE_STATE_COPY_SOURCE,
                 D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 
-            device.close_and_execute_command_list(cmd_lists[i]);
+            close_command_list(cmd_lists[i].get());
+            /*device.close_and_execute_command_list(cmd_lists[i]);
             present_target(config);
 
+            device.wait_for_gpu();*/
+        }
+
+        for (UINT i = 0; i < 20000; ++i) {
+            auto cmd_list = cmd_lists[this->buffer_index()];
+            device.execute_command_list(cmd_list);
+            present_target(config);
             device.wait_for_gpu();
         }
     }
