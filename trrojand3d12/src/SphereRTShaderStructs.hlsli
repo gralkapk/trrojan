@@ -32,7 +32,7 @@ struct Particle
 CB RayGenConstantsStruct {
     float4x4 viewMatrixInv;
     float4x4 projectionMatrixInv;
-    float4 cameraPosition;
+    float3 cameraPosition;
     uint2 renderTargetSize;
     float zNear;
     float zFar;
@@ -41,7 +41,7 @@ CB RayGenConstantsStruct {
 
 CB RayTracingConstantsStruct
 {
-    float spp;
+    uint spp;
     uint recursionDepth;
     float padding[60];
 };
