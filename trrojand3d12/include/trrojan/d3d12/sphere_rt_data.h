@@ -15,7 +15,7 @@ namespace trrojan::d3d12 {
         sphere_rt_data();
         ~sphere_rt_data() = default;
 
-        winrt::com_ptr<ID3D12Resource> load(ID3D12GraphicsCommandList* command_list, D3D12_RESOURCE_STATES state, std::string const& path, std::uint32_t frame);
+        winrt::com_ptr<ID3D12Resource> load(ID3D12GraphicsCommandList* command_list, std::string const& path, std::uint32_t frame);
 
         operator bool(void) const noexcept {
             return (this->data_ != nullptr);

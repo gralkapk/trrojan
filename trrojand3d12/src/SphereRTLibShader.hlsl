@@ -195,10 +195,17 @@ void IntersectionShaderName()
     }
 }
 
+float4 unpackColor(uint color)
+{
+    float4 unpackedColor;
+    // TODO
+    return unpackedColor;
+}
+
 [shader("closesthit")]
 void ClosestHitShaderName(inout RayPayload payload, in Attributes attr)
-{       
-    payload.color = Particles[attr.primID].color;
+{
+    payload.color = unpackColor(Particles[attr.primID].color);
     payload.t = RayTCurrent();
     payload.primID = attr.primID;
 }
@@ -206,5 +213,5 @@ void ClosestHitShaderName(inout RayPayload payload, in Attributes attr)
 [shader("miss")]
 void MissShaderName(inout RayPayload payload)
 {
-    payload.color = float4(1.f, 0.f, 0.f, 1.f);
+    payload.color = float4(0.f, 0.f, 0.f, 1.f);
 }

@@ -72,6 +72,28 @@ void sphere_rt_benchmark_base::on_device_switch(device& device) {
     winrt::com_ptr<ID3D12Device5> dxrDevice;
     d3dDevice->QueryInterface(IID_PPV_ARGS(&dxrDevice));
 
+    create_descriptor_heaps(d3dDevice, CBV_SRV_UAV_Desc_RT_Heap_Slots::Count);
+    // add descriptor heap for compute pipeline
+    {
+        D3D12_DESCRIPTOR_HEAP_DESC desc = {};
+        desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+        desc.NumDescriptors = CBV_SRV_UAV_Desc_Compute_Heap_Slots::Count;
+        desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+        winrt::com_ptr<ID3D12DescriptorHeap> descriptor_heap_compute;
+        auto const hr = d3dDevice->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&descriptor_heap_compute));
+        if (FAILED(hr)) {
+            throw std::system_error(hr, trrojan::com_category());
+        }
+        set_debug_object_name(descriptor_heap_compute, "ComputeDescriptorHeap");
+        _descriptor_heaps.push_back(std::move(descriptor_heap_compute));
+    }
+
+    std::vector<UINT> heap_increment_sizes(pipeline_depth());
+    for (int i = 0; i < pipeline_depth(); ++i) {
+        heap_increment_sizes[i] = d3dDevice->GetDescriptorHandleIncrementSize(_descriptor_heaps[i]->GetDesc().Type);
+    }
+    heap_increment_sizes.push_back(d3dDevice->GetDescriptorHandleIncrementSize(_descriptor_heaps.back()->GetDesc().Type));
+
     // RayGen constant buffer
     {
         cb_ray_ = create_constant_buffer(d3dDevice, sizeof(RayGenConstantsStruct));
@@ -83,6 +105,16 @@ void sphere_rt_benchmark_base::on_device_switch(device& device) {
             throw std::system_error(hr, trrojan::com_category());
         }
         ray_gen_constants_ = static_cast<RayGenConstantsStruct*>(ptr);
+
+        for (int i = 0; i < pipeline_depth(); ++i) {
+            auto const cb_cpu_handle =
+                CD3DX12_CPU_DESCRIPTOR_HANDLE{_descriptor_heaps[i]->GetCPUDescriptorHandleForHeapStart(),
+                    CBV_SRV_UAV_Desc_RT_Heap_Slots::RayGenConstants, heap_increment_sizes[i]};
+            D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc = {};
+            cbvDesc.BufferLocation = cb_ray_->GetGPUVirtualAddress();
+            cbvDesc.SizeInBytes = static_cast<UINT>(sizeof(RayGenConstantsStruct));
+            d3dDevice->CreateConstantBufferView(&cbvDesc, cb_cpu_handle);
+        }
     }
 
     // Ray Tracing constant buffer
@@ -96,6 +128,16 @@ void sphere_rt_benchmark_base::on_device_switch(device& device) {
             throw std::system_error(hr, trrojan::com_category());
         }
         ray_tracing_constants_ = static_cast<RayTracingConstantsStruct*>(ptr);
+
+        for (int i = 0; i < pipeline_depth(); ++i) {
+            auto const cb_cpu_handle =
+                CD3DX12_CPU_DESCRIPTOR_HANDLE{_descriptor_heaps[i]->GetCPUDescriptorHandleForHeapStart(),
+                    CBV_SRV_UAV_Desc_RT_Heap_Slots::RayTracingConstants, heap_increment_sizes[i]};
+            D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc = {};
+            cbvDesc.BufferLocation = cb_raytracing_->GetGPUVirtualAddress();
+            cbvDesc.SizeInBytes = static_cast<UINT>(sizeof(RayTracingConstantsStruct));
+            d3dDevice->CreateConstantBufferView(&cbvDesc, cb_cpu_handle);
+        }
     }
 
     // Compute constant buffer
@@ -108,6 +150,14 @@ void sphere_rt_benchmark_base::on_device_switch(device& device) {
             throw std::system_error(hr, trrojan::com_category());
         }
         compute_constants_ = static_cast<ComputeConstantsStruct*>(ptr);
+
+        auto const cb_cpu_handle =
+            CD3DX12_CPU_DESCRIPTOR_HANDLE{_descriptor_heaps.back()->GetCPUDescriptorHandleForHeapStart(),
+                CBV_SRV_UAV_Desc_Compute_Heap_Slots::ComputeConstants, heap_increment_sizes.back()};
+        D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc = {};
+        cbvDesc.BufferLocation = cb_compute_->GetGPUVirtualAddress();
+        cbvDesc.SizeInBytes = static_cast<UINT>(sizeof(ComputeConstantsStruct));
+        d3dDevice->CreateConstantBufferView(&cbvDesc, cb_cpu_handle);
     }
 
     // global root signature
@@ -212,9 +262,7 @@ void sphere_rt_benchmark_base::on_device_switch(device& device) {
 
     // TODO clear resources
     render_targets_.clear();
-    accumulation_buffers_.clear();
-
-    create_descriptor_heaps(d3dDevice, CBV_SRV_UAV_Desc_Heap_Slots::Count);
+    accumulation_buffer_ = nullptr;
 
     // create shader table
     winrt::com_ptr<ID3D12StateObjectProperties> stateObjectProperties;
@@ -252,6 +300,11 @@ trrojan::result sphere_rt_benchmark_base::on_run(d3d12::device& device, const co
     const auto gpu_freq = gpu_timer::get_timestamp_frequency(device.command_queue().get());
     measurement_context mctx(device, 2, this->pipeline_depth());
 
+    std::vector<UINT> descriptor_heap_sizes(this->pipeline_depth());
+    for (int i = 0; i < this->pipeline_depth(); ++i) {
+        descriptor_heap_sizes[i] =
+            device.d3d_device()->GetDescriptorHandleIncrementSize(_descriptor_heaps[i]->GetDesc().Type);
+    }
 
     clear_stale_data(changed);
 
@@ -262,14 +315,36 @@ trrojan::result sphere_rt_benchmark_base::on_run(d3d12::device& device, const co
             "{}\" ...",
             cfg.data_set());
         auto cmd_list = this->create_graphics_command_list();
-        auto upload = this->data_.load(cmd_list.get(),
-            D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
-            cfg.data_set(), cfg.frame());
+        auto upload = this->data_.load(cmd_list.get(), cfg.data_set(), cfg.frame());
         device.close_and_execute_command_list(cmd_list);
 
         log::instance().write_line(log_level::verbose, "Waiting for data "
                                                        "set to be loaded to the GPU ...");
         device.wait_for_gpu();
+
+        // set views
+        {
+            auto const data = this->data_.data();
+            D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+            srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+            srvDesc.Format = DXGI_FORMAT_UNKNOWN;
+            srvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+            srvDesc.Buffer.FirstElement = 0;
+            srvDesc.Buffer.NumElements = this->data_.spheres();
+            srvDesc.Buffer.StructureByteStride = sizeof(Particle);
+            srvDesc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_NONE;
+
+            for (int i = 0; i < this->pipeline_depth(); ++i) {
+                auto const srvDescHandle =
+                    CD3DX12_CPU_DESCRIPTOR_HANDLE(_descriptor_heaps[i]->GetCPUDescriptorHandleForHeapStart(),
+                        CBV_SRV_UAV_Desc_RT_Heap_Slots::ParticleBuffer, descriptor_heap_sizes[i]);
+                device.d3d_device()->CreateShaderResourceView(data.get(), &srvDesc, srvDescHandle);
+            }
+            auto const srvDescHandle =
+                CD3DX12_CPU_DESCRIPTOR_HANDLE(_descriptor_heaps.back()->GetCPUDescriptorHandleForHeapStart(),
+                    CBV_SRV_UAV_Desc_Compute_Heap_Slots::ParticleBuffer, descriptor_heap_sizes.back());
+            device.d3d_device()->CreateShaderResourceView(data.get(), &srvDesc, srvDescHandle);
+        }
 
         // TODO create acceleration data structure
         reset_command_list(cmd_list);
@@ -300,20 +375,37 @@ trrojan::result sphere_rt_benchmark_base::on_run(d3d12::device& device, const co
     }
 
     // create the UAVs for the rt render targets
-    if (render_targets_.empty() || accumulation_buffers_.empty()) {
+    if (render_targets_.empty() || accumulation_buffer_ == nullptr) {
         const auto viewport = config.get<benchmark_base::viewport_type>(factor_viewport);
         // TODO descriptor heaps?
         render_targets_.resize(pipeline_depth());
-        accumulation_buffers_.resize(pipeline_depth());
 
-        for (auto& rt : render_targets_) {
-            rt = create_texture(device.d3d_device(), viewport[0], viewport[1], DXGI_FORMAT_R8G8B8A8_UNORM,
-                D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COMMON);
+        for (int i = 0; i < pipeline_depth(); ++i) {
+            render_targets_[i] = create_texture(device.d3d_device(), viewport[0], viewport[1],
+                DXGI_FORMAT_R8G8B8A8_UNORM, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COMMON);
+            set_debug_object_name(render_targets_[i], ("RenderTarget_" + std::to_string(i)).c_str());
+            auto const uavDescHandle =
+                CD3DX12_CPU_DESCRIPTOR_HANDLE(_descriptor_heaps[i]->GetCPUDescriptorHandleForHeapStart(),
+                    CBV_SRV_UAV_Desc_RT_Heap_Slots::RenderTarget, descriptor_heap_sizes[i]);
+            D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
+            uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
+            device.d3d_device()->CreateUnorderedAccessView(render_targets_[i].get(), nullptr, &uavDesc, uavDescHandle);
         }
 
-        for (auto& ab : accumulation_buffers_) {
-            ab = create_texture(device.d3d_device(), viewport[0], viewport[1], DXGI_FORMAT_R32G32B32A32_FLOAT,
-                D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COMMON);
+        if (accumulation_buffer_ == nullptr) {
+            accumulation_buffer_ =
+                create_texture(device.d3d_device(), viewport[0], viewport[1], DXGI_FORMAT_R32G32B32A32_FLOAT,
+                    D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COMMON);
+            set_debug_object_name(accumulation_buffer_, "AccumulationBuffer");
+            for (int i = 0; i < pipeline_depth(); ++i) {
+                auto const uavDescHandle =
+                    CD3DX12_CPU_DESCRIPTOR_HANDLE(_descriptor_heaps[i]->GetCPUDescriptorHandleForHeapStart(),
+                        CBV_SRV_UAV_Desc_RT_Heap_Slots::AccumulationBuffer, descriptor_heap_sizes[i]);
+                D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
+                uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
+                device.d3d_device()->CreateUnorderedAccessView(
+                    accumulation_buffer_.get(), nullptr, &uavDesc, uavDescHandle);
+            }
         }
     }
 
@@ -322,6 +414,8 @@ trrojan::result sphere_rt_benchmark_base::on_run(d3d12::device& device, const co
     std::vector<winrt::com_ptr<ID3D12GraphicsCommandList5>> dxr_cmd_lists(pipeline_depth());
     for (UINT i = 0; i < pipeline_depth(); ++i) {
         cmd_lists[i] = this->create_graphics_command_list(i);
+        std::string name = "RTCommandList_" + std::to_string(i);
+        set_debug_object_name(cmd_lists[i], name.c_str());
         auto hr = cmd_lists[i]->QueryInterface(IID_PPV_ARGS(&dxr_cmd_lists[i]));
         if (FAILED(hr)) {
             throw std::system_error(hr, trrojan::com_category());
@@ -377,7 +471,7 @@ trrojan::result sphere_rt_benchmark_base::on_run(d3d12::device& device, const co
             dxr_cmd_list->DispatchRays(&dispatchRaysDesc);
 
             // TODO copy the render target to the back buffer
-            transition_resource(cmd_lists[i].get(), render_targets_[i].get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+            transition_resource(cmd_lists[i].get(), render_targets_[i].get(), D3D12_RESOURCE_STATE_COMMON,
                 D3D12_RESOURCE_STATE_COPY_SOURCE);
 
             enable_target(cmd_lists[i].get(), i, D3D12_RESOURCE_STATE_COPY_DEST);
@@ -385,7 +479,7 @@ trrojan::result sphere_rt_benchmark_base::on_run(d3d12::device& device, const co
             disable_target(cmd_lists[i].get(), i, D3D12_RESOURCE_STATE_COPY_DEST);
 
             transition_resource(cmd_lists[i].get(), render_targets_[i].get(), D3D12_RESOURCE_STATE_COPY_SOURCE,
-                D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+                D3D12_RESOURCE_STATE_COMMON);
 
             close_command_list(cmd_lists[i].get());
             /*device.close_and_execute_command_list(cmd_lists[i]);
@@ -444,9 +538,30 @@ void sphere_rt_benchmark_base::create_acceleration_structure(
         assert(dxrCmdList != nullptr);
     }
 
+    std::vector<UINT> heap_increment_sizes(pipeline_depth());
+    for (int i = 0; i < pipeline_depth(); ++i) {
+        heap_increment_sizes[i] = d3dDevice->GetDescriptorHandleIncrementSize(_descriptor_heaps[i]->GetDesc().Type);
+    }
+    heap_increment_sizes.push_back(
+        d3dDevice->GetDescriptorHandleIncrementSize(_descriptor_heaps.back()->GetDesc().Type));
+
+
     auto aabb_buffer = create_buffer(device.d3d_device(), data_.spheres() * sizeof(AABB), 0,
         D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
     set_debug_object_name(aabb_buffer, "AABBBuffer");
+    // set AABB view
+    {
+        auto const uavDescHandle =
+            CD3DX12_CPU_DESCRIPTOR_HANDLE(_descriptor_heaps.back()->GetCPUDescriptorHandleForHeapStart(),
+                CBV_SRV_UAV_Desc_Compute_Heap_Slots::AABBBuffer, heap_increment_sizes.back());
+        D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
+        uavDesc.ViewDimension = D3D12_UAV_DIMENSION_BUFFER;
+        uavDesc.Buffer.FirstElement = 0;
+        uavDesc.Buffer.NumElements = data_.spheres();
+        uavDesc.Buffer.StructureByteStride = sizeof(AABB);
+        uavDesc.Format = DXGI_FORMAT_UNKNOWN;
+        d3dDevice->CreateUnorderedAccessView(aabb_buffer.get(), nullptr, &uavDesc, uavDescHandle);
+    }
 
     // acceleration data structure
     {

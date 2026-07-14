@@ -17,7 +17,7 @@ struct AABB {
 struct Particle
 {
     float4 position; // xyz = position, w = radius
-    uint4 color; // rgba
+    uint color; // rgba
 };
 
 #ifdef _MSC_VER

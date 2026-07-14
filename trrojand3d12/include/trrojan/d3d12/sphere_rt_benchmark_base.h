@@ -10,8 +10,12 @@
 #include "SphereRTShaderStructs.hlsli"
 
 namespace trrojan::d3d12 {
-namespace CBV_SRV_UAV_Desc_Heap_Slots {
+namespace CBV_SRV_UAV_Desc_RT_Heap_Slots {
 enum Value { RenderTarget = 0, AccumulationBuffer, RayGenConstants, RayTracingConstants, ParticleBuffer, Count };
+}
+
+namespace CBV_SRV_UAV_Desc_Compute_Heap_Slots {
+enum Value { ParticleBuffer = 0, AABBBuffer, ComputeConstants, Count };
 }
 
 namespace GlobalRootSigParams {
@@ -68,7 +72,7 @@ private:
     winrt::com_ptr<ID3D12Resource> sbtBuffer_;
 
     std::vector<winrt::com_ptr<ID3D12Resource>> render_targets_;
-    std::vector<winrt::com_ptr<ID3D12Resource>> accumulation_buffers_;
+    winrt::com_ptr<ID3D12Resource> accumulation_buffer_;
 
     RayGenConstantsStruct* ray_gen_constants_;
     RayTracingConstantsStruct* ray_tracing_constants_;
