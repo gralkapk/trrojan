@@ -109,6 +109,8 @@ if (WIN32)
     set(TRROJAN_PLUGINS ${TRROJAN_PLUGINS} trrojand3d11)
     add_subdirectory(trrojand3d12)
     set(TRROJAN_PLUGINS ${TRROJAN_PLUGINS} trrojand3d12)
+    add_subdirectory(trrojanospray)
+    set(TRROJAN_PLUGINS ${TRROJAN_PLUGINS} trrojanospray)
 endif ()
 
 # Build the executable
