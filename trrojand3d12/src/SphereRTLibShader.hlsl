@@ -198,7 +198,10 @@ void IntersectionShaderName()
 float4 unpackColor(uint color)
 {
     float4 unpackedColor;
-    // TODO
+    unpackedColor.r = (color & 0xFF) / 255.0f;
+    unpackedColor.g = ((color >> 8) & 0xFF) / 255.0f;
+    unpackedColor.b = ((color >> 16) & 0xFF) / 255.0f;
+    unpackedColor.a = ((color >> 24) & 0xFF) / 255.0f;
     return unpackedColor;
 }
 
