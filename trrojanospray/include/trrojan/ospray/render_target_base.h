@@ -16,6 +16,22 @@ public:
 
     void resize(int width, int height);
 
+    void copyColorTo(void* dst);
+
+    int getWidth() const {
+        return _width;
+    }
+
+    int getHeight() const {
+        return _height;
+    }
+
+    float getAspectRatio() const {
+        return static_cast<float>(_width) / static_cast<float>(_height);
+    }
+
 private:
+    int _width;
+    int _height;
 };
 } // namespace trrojan::ospray

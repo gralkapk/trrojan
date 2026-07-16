@@ -2,6 +2,8 @@
 
 #include <cstdint>
 
+#include "trrojan/configuration.h"
+
 #include "trrojan/ospray/export.h"
 #include "trrojan/ospray/object.h"
 
@@ -14,8 +16,10 @@ public:
     static const char* factor_ao_distance;
     static const char* factor_volume_sampling_rate;
 
-    renderer_base();
+    renderer_base(const configuration& config);
     virtual ~renderer_base();
+
+    OSPFuture renderFrame(OSPFrameBuffer frameBuffer, OSPCamera camera, OSPWorld world);
 
 private:
     std::int32_t _spp;
