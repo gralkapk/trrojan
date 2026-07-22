@@ -114,7 +114,7 @@ sphere_osp_data::RETVAL sphere_osp_data::load(std::string const& path, std::uint
         _colors[i] = particles[i].color;
     }
 
-    return std::make_tuple<std::vector<glm::vec4> const&, std::vector<float> const&, std::vector<glm::u8vec4> const&>(
+    return std::make_tuple<std::vector<glm::vec3> const&, std::vector<float> const&, std::vector<glm::u8vec4> const&>(
         _positions, _radii, _colors);
 }
 
