@@ -16,6 +16,10 @@ public:
     object& setParam(const char* id, OSPDataType type, const void* mem);
     object& removeParam(const char* id);
 
+    operator bool() const {
+        return getObject() != nullptr;
+    }
+
 protected:
     OSPObject getObject() const {
         return _osp_object;

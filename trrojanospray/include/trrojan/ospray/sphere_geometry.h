@@ -22,6 +22,10 @@ public:
     sphere_geometry& setPositions(const std::vector<glm::vec3>& positions);
     sphere_geometry& setRadii(const std::vector<float>& radii);
 
+    operator OSPGeometry() const {
+        return reinterpret_cast<OSPGeometry>(getObject());
+    }
+
 private:
 };
 }
