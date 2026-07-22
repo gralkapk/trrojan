@@ -8,7 +8,7 @@
 namespace trrojan::ospray {
     class TRROJANOSPRAY_API sphere_osp_data final {
     public:
-        using RETVAL = std::tuple<std::vector<glm::vec3> const&, std::vector<float> const&, std::vector<glm::u8vec4> const&>;
+        using RETVAL = std::tuple<std::vector<glm::vec3> const&, std::vector<float> const&, std::vector<glm::vec4> const&>;
         sphere_osp_data();
         ~sphere_osp_data() = default;
 
@@ -51,7 +51,7 @@ namespace trrojan::ospray {
 
         std::vector<glm::vec3> _positions;
         std::vector<float> _radii;
-        std::vector<glm::u8vec4> _colors;
+        std::vector<glm::vec4> _colors;
 
         std::array<glm::vec3, 2> _bbox;
         float _max_radius;
