@@ -9,6 +9,8 @@
 namespace trrojan::ospray {
 class TRROJANOSPRAY_API device : public trrojan::device_base {
 public:
+    using pointer = std::shared_ptr<device>;
+
     device();
     virtual ~device();
 
