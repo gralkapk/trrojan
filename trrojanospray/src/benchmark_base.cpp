@@ -1,5 +1,7 @@
 #include "trrojan/ospray/benchmark_base.h"
 
+#include "trrojan/ospray/render_target_base.h"
+
 namespace trrojan::ospray {
 bool benchmark_base::can_run(trrojan::environment env, trrojan::device device) const noexcept {
     auto d = std::dynamic_pointer_cast<trrojan::ospray::device>(device);
@@ -26,6 +28,9 @@ trrojan::result benchmark_base::run(const configuration& config) {
 
     if (contains(changed, factor_viewport)) {
         // TODO: Resize the render target if the viewport has changed.
+        auto vp = config.get<viewport_type>(factor_viewport);
+        _render_target = std::make_shared<render_target_base>(vp[0], vp[1]);
+        _render_target->commit();
     }
 
     auto const retval = on_run(*device, config, power_collector, changed);
