@@ -30,6 +30,7 @@ target_include_directories(${PROJECT_NAME}
         $<BUILD_INTERFACE:${SourceDirectory}>)
 target_link_libraries(${PROJECT_NAME} PRIVATE trrojancore)
 target_link_libraries(${PROJECT_NAME} PRIVATE ${CMAKE_THREAD_LIBS_INIT})
+target_link_libraries(${PROJECT_NAME} PRIVATE d3d12 dxgi)
 target_link_libraries(${PROJECT_NAME} PRIVATE ospray::ospray glm::glm)
 
 # Installation

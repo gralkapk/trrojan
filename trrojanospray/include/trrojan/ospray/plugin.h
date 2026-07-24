@@ -8,7 +8,7 @@ namespace trrojan {
 namespace ospray {
 
     /// <summary>
-    /// Descriptor for the RAM stream benchmark plugin.
+    /// Descriptor for the OSPRay benchmark plugin.
     /// </summary>
     class TRROJANOSPRAY_API plugin : public trrojan::plugin_base {
 
@@ -17,7 +17,7 @@ namespace ospray {
         typedef trrojan::plugin_base::benchmark_list benchmark_list;
         typedef trrojan::plugin_base::environment_list environment_list;
 
-        inline plugin(void) : trrojan::plugin_base("stream") { }
+        inline plugin(void) : trrojan::plugin_base("ospray") { }
 
         virtual ~plugin(void);
 

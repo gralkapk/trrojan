@@ -1,6 +1,6 @@
 #include "trrojan/ospray/benchmark_base.h"
 
-#include "trrojan/ospray/render_target_base.h"
+#include "trrojan/ospray/debug_render_target.h"
 
 namespace trrojan::ospray {
 bool benchmark_base::can_run(trrojan::environment env, trrojan::device device) const noexcept {
@@ -29,7 +29,8 @@ trrojan::result benchmark_base::run(const configuration& config) {
     if (contains(changed, factor_viewport)) {
         // TODO: Resize the render target if the viewport has changed.
         auto vp = config.get<viewport_type>(factor_viewport);
-        _render_target = std::make_shared<render_target_base>(vp[0], vp[1]);
+        _render_target = std::make_shared<debug_render_target>(*device);
+        _render_target->resize(vp[0], vp[1]);
         _render_target->commit();
     }
 
@@ -41,4 +42,8 @@ trrojan::result benchmark_base::run(const configuration& config) {
 benchmark_base::benchmark_base(const std::string& name) : trrojan::graphics_benchmark_base{name} {}
 
 void benchmark_base::on_device_switch(device& device) {}
+
+void benchmark_base::set_aspect_from_viewport(trrojan::camera& camera) {
+    camera.set_aspect_ratio(_render_target->getAspectRatio());
+}
 } // namespace trrojan::ospray

@@ -2,6 +2,10 @@
 
 #include <Windows.h>
 
+#include "trrojan/ospray/environment.h"
+
+#include "trrojan/ospray/sphere_benchmark.h"
+
 /// <summary>
 /// Handle of the plugin DLL.
 /// </summary>
@@ -42,7 +46,8 @@ trrojan::ospray::plugin::~plugin(void) { }
  * trrojan::ospray::plugin::create_benchmarks
  */
 size_t trrojan::ospray::plugin::create_benchmarks(benchmark_list& dst) const {
-    return 0;
+    dst.emplace_back(std::make_shared<trrojan::ospray::sphere_benchmark>());
+    return 1;
 }
 
 
@@ -51,5 +56,6 @@ size_t trrojan::ospray::plugin::create_benchmarks(benchmark_list& dst) const {
  */
 size_t trrojan::ospray::plugin::create_environments(
         environment_list& dst) const {
-    return 0;
+    dst.emplace_back(std::make_shared<trrojan::ospray::environment>());
+    return 1;
 }
