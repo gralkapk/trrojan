@@ -15,12 +15,12 @@ public:
     virtual ~geometric_model();
 
     geometric_model& setGeometry(OSPGeometry geometry) {
-        setParam("geometry", OSP_GEOMETRY, geometry);
+        setObject("geometry", geometry);
         return *this;
     }
 
     geometric_model& setMaterial(OSPMaterial material) {
-        setParam("material", OSP_MATERIAL, material);
+        setObject("material", material);
         return *this;
     }
 
@@ -28,7 +28,7 @@ public:
         auto tmp_data = ospNewSharedData(color.data(), OSP_VEC4F, color.size());
         auto data = ospNewData(OSP_VEC4F, color.size());
         ospCopyData(tmp_data, data);
-        setParam("color", OSP_DATA, data);
+        setObject("color", data);
         ospRelease(data);
         ospRelease(tmp_data);
         return *this;

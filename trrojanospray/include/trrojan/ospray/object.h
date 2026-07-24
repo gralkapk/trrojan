@@ -16,8 +16,15 @@ public:
     object& setParam(const char* id, OSPDataType type, const void* mem);
     object& removeParam(const char* id);
 
+    object& setObject(const char* id, OSPObject osp_object);
+
     operator bool() const {
         return getObject() != nullptr;
+    }
+
+    template<typename T>
+    operator T() const {
+        return reinterpret_cast<T>(getObject());
     }
 
 protected:

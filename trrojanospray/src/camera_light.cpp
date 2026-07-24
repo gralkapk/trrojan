@@ -13,14 +13,14 @@ _CAMERA_LIGHT_DEFINE_FACTOR(cam_direction);
 
 camera_light::camera_light(const configuration& config)
         : object{ospNewLight("distant")}
-        , _CAMERA_LIGHT_INIT_FACTOR(cam_direction) {
+        /*, _CAMERA_LIGHT_INIT_FACTOR(cam_direction)*/ {
     // TODO: Initialize camera light with configuration
 
     // color vec3f
     // intensity float
     // direction vec3f
 
-    setParam("direction", OSP_VEC3F, glm::value_ptr(_cam_direction));
+    //setParam("direction", OSP_VEC3F, glm::value_ptr(_cam_direction));
 }
 
 #undef _CAMERA_LIGHT_INIT_FACTOR

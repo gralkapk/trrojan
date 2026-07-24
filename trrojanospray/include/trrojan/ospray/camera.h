@@ -10,14 +10,16 @@
 namespace trrojan::ospray {
 class TRROJANOSPRAY_API camera : public object {
 public:
-    static const char* factor_cam_position;
-    static const char* factor_cam_direction;
-    static const char* factor_cam_up;
-    static const char* factor_nearClip;
-    static const char* factor_fovy;
-    static const char* factor_aspect;
+    struct config {
+        glm::vec3 cam_position;
+        glm::vec3 cam_direction;
+        glm::vec3 cam_up;
+        float nearClip;
+        float fovy;
+        float aspect;
+    };
 
-    camera(const configuration& config);
+    camera(const config& config);
     ~camera();
 private:
     glm::vec3 _cam_position;

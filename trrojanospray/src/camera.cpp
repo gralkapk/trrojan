@@ -3,27 +3,14 @@
 #include <glm/gtc/type_ptr.hpp>
 
 namespace trrojan::ospray {
-#define _CAMERA_DEFINE_FACTOR(f) const char* camera::factor_##f = #f
-
-_CAMERA_DEFINE_FACTOR(cam_position);
-_CAMERA_DEFINE_FACTOR(cam_direction);
-_CAMERA_DEFINE_FACTOR(cam_up);
-_CAMERA_DEFINE_FACTOR(nearClip);
-_CAMERA_DEFINE_FACTOR(fovy);
-_CAMERA_DEFINE_FACTOR(aspect);
-
-#undef _CAMERA_DEFINE_FACTOR
-
-#define _CAMERA_INIT_FACTOR(f) _##f(config.get<decltype(_##f)>(factor_##f))
-
-camera::camera(const configuration& config)
+camera::camera(const config& config)
         : object{ospNewCamera("perspective")}
-        , _CAMERA_INIT_FACTOR(cam_position)
-        , _CAMERA_INIT_FACTOR(cam_direction)
-        , _CAMERA_INIT_FACTOR(cam_up)
-        , _CAMERA_INIT_FACTOR(nearClip)
-        , _CAMERA_INIT_FACTOR(fovy)
-        , _CAMERA_INIT_FACTOR(aspect) {
+        , _cam_position(config.cam_position)
+        , _cam_direction(config.cam_direction)
+        , _cam_up(config.cam_up)
+        , _nearClip(config.nearClip)
+        , _fovy(config.fovy)
+        , _aspect(config.aspect) {
     // TODO: Set camera parameters
     setParam("position", OSP_VEC3F, glm::value_ptr(_cam_position));
     setParam("direction", OSP_VEC3F, glm::value_ptr(_cam_direction));
@@ -32,8 +19,6 @@ camera::camera(const configuration& config)
     setParam("fovy", OSP_FLOAT, &_fovy);
     setParam("aspect", OSP_FLOAT, &_aspect);
 }
-
-#undef _CAMERA_INIT_FACTOR
 
 camera::~camera() {}
 } // namespace trrojan::ospray

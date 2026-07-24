@@ -16,7 +16,15 @@ public:
     static const char* factor_ao_distance;
     static const char* factor_volume_sampling_rate;
 
-    renderer_base(const configuration& config);
+    struct config {
+        std::int32_t spp;
+        std::int32_t path_length;
+        std::int32_t ao_samples;
+        float ao_distance;
+        float volume_sampling_rate;
+    };
+
+    renderer_base(const config& config);
     virtual ~renderer_base();
 
     OSPFuture renderFrame(OSPFrameBuffer frameBuffer, OSPCamera camera, OSPWorld world);

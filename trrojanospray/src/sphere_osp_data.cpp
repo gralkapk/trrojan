@@ -15,7 +15,7 @@ struct tmpParticle {
     glm::u8vec4 color;
 };
 
-sphere_osp_data::RETVAL sphere_osp_data::load(std::string const& path, std::uint32_t frame) {
+void sphere_osp_data::load(std::string const& path, std::uint32_t frame) {
     clear();
 
     std::vector<std::uint8_t> buffer;
@@ -114,9 +114,6 @@ sphere_osp_data::RETVAL sphere_osp_data::load(std::string const& path, std::uint
         _colors[i] = particles[i].color;
         _colors[i] /= 255.0f; // convert to [0,1] range
     }
-
-    return std::make_tuple<std::vector<glm::vec3> const&, std::vector<float> const&, std::vector<glm::vec4> const&>(
-        _positions, _radii, _colors);
 }
 
 void sphere_osp_data::clear() {

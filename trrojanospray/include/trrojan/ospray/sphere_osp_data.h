@@ -8,11 +8,10 @@
 namespace trrojan::ospray {
     class TRROJANOSPRAY_API sphere_osp_data final {
     public:
-        using RETVAL = std::tuple<std::vector<glm::vec3> const&, std::vector<float> const&, std::vector<glm::vec4> const&>;
         sphere_osp_data();
         ~sphere_osp_data() = default;
 
-        RETVAL load(
+        void load(
             std::string const& path, std::uint32_t frame);
 
         operator bool(void) const noexcept {
@@ -37,13 +36,25 @@ namespace trrojan::ospray {
             return this->_cnt_spheres;
         }
 
-        RETVAL data(
+        /*RETVAL data(
             void) const noexcept {
             return {this->_positions, this->_radii, this->_colors};
-        }
+        }*/
 
         const float max_radius(void) const noexcept {
             return this->_max_radius;
+        }
+
+        const std::vector<glm::vec3>& positions(void) const noexcept {
+            return this->_positions;
+        }
+
+        const std::vector<float>& radii(void) const noexcept {
+            return this->_radii;
+        }
+
+        const std::vector<glm::vec4>& colors(void) const noexcept {
+            return this->_colors;
         }
     private:
         void fit_bounding_box(const mmpld::list_header& header,

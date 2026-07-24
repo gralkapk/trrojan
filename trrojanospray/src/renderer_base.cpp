@@ -1,34 +1,25 @@
 #include "trrojan/ospray/renderer_base.h"
 
+#include <glm/glm.hpp>
+#include <glm/gtc/type_ptr.hpp>
+
 namespace trrojan::ospray {
-#define _RENDERER_DEFINE_FACTOR(f) const char* renderer_base::factor_##f = #f
-
-_RENDERER_DEFINE_FACTOR(spp);
-_RENDERER_DEFINE_FACTOR(path_length);
-_RENDERER_DEFINE_FACTOR(ao_samples);
-_RENDERER_DEFINE_FACTOR(ao_distance);
-_RENDERER_DEFINE_FACTOR(volume_sampling_rate);
-
-#undef _RENDERER_DEFINE_FACTOR
-
-#define _RENDERER_INIT_FACTOR(f) _##f(config.get<decltype(_##f)>(factor_##f))
-
-renderer_base::renderer_base(const configuration& config)
+renderer_base::renderer_base(const config& config)
         : object{ospNewRenderer("scivis")}
-        , _RENDERER_INIT_FACTOR(spp)
-        , _RENDERER_INIT_FACTOR(path_length)
-        , _RENDERER_INIT_FACTOR(ao_samples)
-        , _RENDERER_INIT_FACTOR(ao_distance)
-        , _RENDERER_INIT_FACTOR(volume_sampling_rate) {
+        , _spp(config.spp)
+        , _path_length(config.path_length)
+        , _ao_samples(config.ao_samples)
+        , _ao_distance(config.ao_distance)
+        , _volume_sampling_rate(config.volume_sampling_rate) {
     // set default values for the parameters
     setParam("pixelSamples", OSP_INT, &_spp);
     setParam("maxPathLength", OSP_INT, &_path_length);
     setParam("aoSamples", OSP_INT, &_ao_samples);
     setParam("aoDistance", OSP_FLOAT, &_ao_distance);
     setParam("volumeSamplingRate", OSP_FLOAT, &_volume_sampling_rate);
+    glm::vec4 background_color{0.0f, 1.0f, 0.0f, 1.0f};
+    setParam("backgroundColor", OSP_VEC4F, glm::value_ptr(background_color));
 }
-
-#undef _RENDERER_INIT_FACTOR
 
 renderer_base::~renderer_base() {}
 

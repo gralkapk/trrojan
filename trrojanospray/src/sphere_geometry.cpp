@@ -9,12 +9,12 @@ sphere_geometry::sphere_geometry(OSPData positions, OSPData radii) : object{ospN
 }
 
 sphere_geometry& sphere_geometry::setPositions(OSPData positions) {
-    setParam("sphere.position", OSP_DATA, positions);
+    setObject("sphere.position", positions);
     return *this;
 }
 
 sphere_geometry& sphere_geometry::setRadii(OSPData radii) {
-    setParam("sphere.radius", OSP_DATA, radii);
+    setObject("sphere.radius", radii);
     return *this;
 }
 
