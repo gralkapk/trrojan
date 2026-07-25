@@ -201,7 +201,7 @@ void debug_render_target::resize(const unsigned int width, const unsigned int he
 
     // record command list for copying OSPRay render target to the back buffer of the swap chain
     {
-        std::array<float, 4> clearColor = {1.0f, 0.0f, 0.0f, 1.0f};
+        std::array<float, 4> clearColor = {0.0f, 0.0f, 0.0f, 1.0f};
         for (UINT i = 0; i < this->pipeline_depth(); ++i) {
             auto& cmd_list = this->_command_lists[i];
             auto& cmd_allocator = this->_command_allocators[i];

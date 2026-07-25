@@ -13,6 +13,12 @@
 
 #include "trrojan/ospray/sphere_configuration.h"
 
+#include <ospray/ospray_cpp.h>
+#include <ospray/ospray_util.h>
+
+#include <glm/glm.hpp>
+#include <glm/gtc/type_ptr.hpp>
+
 namespace trrojan::ospray {
 
 sphere_benchmark::sphere_benchmark() : benchmark_base("sphere-renderer") {
@@ -43,29 +49,57 @@ result sphere_benchmark::on_run(ospray::device& device, const configuration& con
     power_collector::pointer& power_collector, const std::vector<std::string>& changed) {
     sphere_configuration cfg{config};
 
-
-    geometric_model sphere_model;
-
+    ::ospray::cpp::GeometricModel sphere_model;
+       
     // load data
     if (!this->_data) {
         log::instance().write_line(log_level::information, "Loading data set: ", cfg.data_set(), " frame: ", cfg.frame());
         this->_data.load(cfg.data_set(), cfg.frame());
 
-        sphere_geometry geometry;
-        geometry.setPositions(this->_data.positions()).setRadii(this->_data.radii()).commit();
+        ::ospray::cpp::Geometry geometry("sphere");
+        geometry.setParam("sphere.position",
+            ::ospray::cpp::SharedData(this->_data.positions().data(), OSP_VEC3F, this->_data.positions().size()));
+        geometry.setParam("sphere.radius",
+            ::ospray::cpp::SharedData(this->_data.radii().data(), OSP_FLOAT, this->_data.radii().size()));
+        geometry.commit();
 
-        sphere_model.setGeometry(geometry).setColor(this->_data.colors()).commit();
+        ::ospray::cpp::Material material("obj");
+        material.commit();
+
+        sphere_model = ::ospray::cpp::GeometricModel(geometry);
+
+        sphere_model.setParam("color", ::ospray::cpp::SharedData(this->_data.colors().data(), OSP_VEC4F, this->_data.colors().size()));
+        sphere_model.setParam("material", material);
+        sphere_model.commit();
     }
 
+    configure_camera(config);
+
     // generate world
-    group sphere_group;
-    sphere_group.setGeometry(static_cast<OSPGeometricModel>(sphere_model)).commit();
-    instance sphere_instance(static_cast<OSPGroup>(sphere_group));
+    ::ospray::cpp::Group sphere_group;
+    sphere_group.setParam("geometry", ::ospray::cpp::CopiedData(&sphere_model, OSP_GEOMETRIC_MODEL, 1));
+    sphere_group.commit();
+
+    ::ospray::cpp::Instance sphere_instance(sphere_group);
     sphere_instance.commit();
-    /*std::vector<OSPInstance> instances;
-    instances.push_back(sphere_instance);*/
-    auto light = camera_light(config);
-    world world(static_cast<OSPInstance>(sphere_instance), light);
+
+    std::vector<::ospray::cpp::Light> lights;
+    {
+        ::ospray::cpp::Light light("ambient");
+        light.commit();
+        lights.push_back(light);
+    }
+    {
+        ::ospray::cpp::Light light("distant");
+        light.setParam("direction", OSP_VEC3F, glm::value_ptr(_camera.get_look_to() - _camera.get_look_from()));
+        light.setParam("intensity", 1.0f);
+        light.commit();
+        lights.push_back(light);
+    }
+
+    ::ospray::cpp::World world;
+    world.setParam("instance", ::ospray::cpp::CopiedData(&sphere_instance, OSP_INSTANCE, 1));
+    world.setParam("light", ::ospray::cpp::CopiedData(lights.data(), OSP_LIGHT, lights.size()));
     world.commit();
 
     // setup renderer
@@ -79,20 +113,18 @@ result sphere_benchmark::on_run(ospray::device& device, const configuration& con
     renderer.commit();
 
     // do benchmark
-    configure_camera(config);
-
     camera::config camera_config = {};
     camera_config.aspect = _camera.get_aspect_ratio();
     camera_config.fovy = _camera.get_fovy();
     camera_config.cam_position = _camera.get_look_from();
-    camera_config.cam_direction = _camera.get_look_to();
+    camera_config.cam_direction = _camera.get_look_to() - _camera.get_look_from();
     camera_config.cam_up = _camera.get_look_up();
     camera_config.nearClip = _camera.get_near_plane_dist();
     camera camera(camera_config);
     camera.commit();
 
     auto frame_future = renderer.renderFrame(static_cast<OSPFrameBuffer>(*render_target()), static_cast<OSPCamera>(camera),
-        static_cast<OSPWorld>(world));
+        world.handle());
     ospWait(frame_future);
 
     render_target()->present(0);

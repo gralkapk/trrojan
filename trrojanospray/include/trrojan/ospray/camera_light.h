@@ -10,9 +10,7 @@
 namespace trrojan::ospray {
 class TRROJANOSPRAY_API camera_light : public object {
 public:
-    static const char* factor_cam_direction;
-
-    explicit camera_light(const configuration& config);
+    explicit camera_light(const glm::vec3 &direction);
     virtual ~camera_light() = default;
 
 private:

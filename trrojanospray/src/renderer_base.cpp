@@ -17,7 +17,7 @@ renderer_base::renderer_base(const config& config)
     setParam("aoSamples", OSP_INT, &_ao_samples);
     setParam("aoDistance", OSP_FLOAT, &_ao_distance);
     setParam("volumeSamplingRate", OSP_FLOAT, &_volume_sampling_rate);
-    glm::vec4 background_color{0.0f, 1.0f, 0.0f, 1.0f};
+    glm::vec4 background_color{0.0f, 0.0f, 0.0f, 1.0f};
     setParam("backgroundColor", OSP_VEC4F, glm::value_ptr(background_color));
 }
 

@@ -113,6 +113,7 @@ void sphere_osp_data::load(std::string const& path, std::uint32_t frame) {
         _radii[i] = particles[i].position.w;
         _colors[i] = particles[i].color;
         _colors[i] /= 255.0f; // convert to [0,1] range
+        _colors[i].a = 1.0f;  // set alpha to 1.0
     }
 }
 
