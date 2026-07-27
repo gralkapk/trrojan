@@ -37,13 +37,16 @@ namespace detail {
     /// header.
     /// </summary>
     struct power_details final {
+#if defined(POWER_OVERWHELMING_WITH_VISA)
         std::vector<visus::pwrowg::hmc8015_instrument> hmc8015;
+#endif
         visus::pwrowg::marker_controller *markers { };
         visus::pwrowg::tinkerforge_controller *tinkerforge { };
         std::unique_ptr<pwr_sink> sink;
         visus::pwrowg::sensor_array sensors;
     };
 
+#if defined(POWER_OVERWHELMING_WITH_VISA)
     /// <summary>
     /// Starts recording to a new log file on the HMC8015.
     /// </summary>
@@ -77,6 +80,7 @@ namespace detail {
         sensor.log(true);
         assert(sensor.is_log());
     }
+#endif
 
 } /* namespace detail */
 } /* namespace trrojan */
@@ -119,13 +123,11 @@ trrojan::power_collector::power_collector(void)
         : _details(std::make_unique<detail::power_details>()) {
     assert(this->_details != nullptr);
 
+#if defined(POWER_OVERWHELMING_WITH_VISA)
     // For backward compatibility, we set up the HMC 8015 separately.
     try {
-        this->_details->hmc8015.resize(
-            visus::pwrowg::hmc8015_instrument::for_all(nullptr, 0));
-        visus::pwrowg::hmc8015_instrument::for_all(
-            this->_details->hmc8015.data(),
-            this->_details->hmc8015.size());
+        this->_details->hmc8015.resize(visus::pwrowg::hmc8015_instrument::for_all(nullptr, 0));
+        visus::pwrowg::hmc8015_instrument::for_all(this->_details->hmc8015.data(), this->_details->hmc8015.size());
 
         for (auto& s : this->_details->hmc8015) {
             s.display("TRRojan. The way you're meant to be trrolled!");
@@ -134,19 +136,17 @@ trrojan::power_collector::power_collector(void)
 
             // Fix the ranges, because an automatic range switch will ruin the
             // measurements.
-            s.voltage_range(visus::pwrowg::hmc8015_instrument_range::explicitly,
-                300);
+            s.voltage_range(visus::pwrowg::hmc8015_instrument_range::explicitly, 300);
             // If we consume more than 5A 230V, our PSU is probably just before
             // exploding ...
-            s.current_range(visus::pwrowg::hmc8015_instrument_range::explicitly,
-                5);
+            s.current_range(visus::pwrowg::hmc8015_instrument_range::explicitly, 5);
             // Tell it to log it until we explicitly stop it.
-            s.log_behaviour(std::numeric_limits<float>::lowest(),
-                visus::pwrowg::hmc8015_log_mode::unlimited);
+            s.log_behaviour(std::numeric_limits<float>::lowest(), visus::pwrowg::hmc8015_log_mode::unlimited);
         }
     } catch (std::exception& ex) {
         log::instance().write_line(ex);
     }
+#endif
 }
 
 
@@ -262,16 +262,18 @@ void trrojan::power_collector::stop(void) {
     // Dispose the array, which serves as guard whether we are running or not.
     this->_details->sensors = visus::pwrowg::sensor_array();
 
+#if defined(POWER_OVERWHELMING_WITH_VISA)
     // Stop logging on HMC.
     for (auto& s : this->_details->hmc8015) {
         try {
             s.log(false);
             s.display("Do not forget to retrieve your measurements from the "
-                "USB port!");
+                      "USB port!");
         } catch (std::exception& ex) {
             log::instance().write_line(ex);
         }
     }
+#endif
 
     // Finalise the output file.
     this->_details->sink.reset();
