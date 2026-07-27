@@ -292,13 +292,19 @@ void sphere_rt_benchmark_base::on_device_switch(device& device) {
         sbt_.Serialize(data, sbt_size, &shader_table_descriptor_);
         sbtBuffer_->Unmap(0, nullptr);
     }
+
+    _bundle_allocators.clear();
+    create_command_allocators(_bundle_allocators, d3dDevice.get(), D3D12_COMMAND_LIST_TYPE_BUNDLE, pipeline_depth());
 }
 
 trrojan::result sphere_rt_benchmark_base::on_run(d3d12::device& device, const configuration& config,
     power_collector::pointer& power_collector, const std::vector<std::string>& changed) {
     sphere_rt_rendering_configuration cfg{config};
+    std::vector<gpu_timer::millis_type> gpu_times;
     const auto gpu_freq = gpu_timer::get_timestamp_frequency(device.command_queue().get());
     measurement_context mctx(device, 2, this->pipeline_depth());
+    stats_query::value_type pipeline_stats;
+    stats_query stats_query(device.d3d_device().get(), 1, 1);
 
     std::vector<UINT> descriptor_heap_sizes(this->pipeline_depth());
     for (int i = 0; i < this->pipeline_depth(); ++i) {
@@ -412,6 +418,7 @@ trrojan::result sphere_rt_benchmark_base::on_run(d3d12::device& device, const co
 
     std::vector<winrt::com_ptr<ID3D12GraphicsCommandList>> cmd_lists(pipeline_depth());
     std::vector<winrt::com_ptr<ID3D12GraphicsCommandList5>> dxr_cmd_lists(pipeline_depth());
+    std::vector<winrt::com_ptr<ID3D12GraphicsCommandList5>> dxr_bundles(pipeline_depth());
     for (UINT i = 0; i < pipeline_depth(); ++i) {
         cmd_lists[i] = this->create_graphics_command_list(i);
         std::string name = "RTCommandList_" + std::to_string(i);
@@ -420,7 +427,16 @@ trrojan::result sphere_rt_benchmark_base::on_run(d3d12::device& device, const co
         if (FAILED(hr)) {
             throw std::system_error(hr, trrojan::com_category());
         }
+        auto bundle = this->create_command_list(D3D12_COMMAND_LIST_TYPE_BUNDLE, i);
+        hr = bundle->QueryInterface(IID_PPV_ARGS(&dxr_bundles[i]));
+        if (FAILED(hr)) {
+            throw std::system_error(hr, trrojan::com_category());
+        }
     }
+
+
+    gpu_timer::millis_type cpu_time;
+
     // TODO TEST basic rendering command list
     {
         for (UINT i = 0; i < pipeline_depth(); ++i) {
@@ -475,6 +491,7 @@ trrojan::result sphere_rt_benchmark_base::on_run(d3d12::device& device, const co
                 D3D12_RESOURCE_STATE_COPY_SOURCE);
 
             enable_target(cmd_lists[i].get(), i, D3D12_RESOURCE_STATE_COPY_DEST);
+            clear_target(cmd_lists[i].get(), i);
             copy_to_target(cmd_lists[i].get(), render_targets_[i].get(), i);
             disable_target(cmd_lists[i].get(), i, D3D12_RESOURCE_STATE_COPY_DEST);
 
@@ -488,15 +505,210 @@ trrojan::result sphere_rt_benchmark_base::on_run(d3d12::device& device, const co
             device.wait_for_gpu();*/
         }
 
-        for (UINT i = 0; i < 20000; ++i) {
+        // record bundle
+        for (UINT i = 0; i < pipeline_depth(); ++i) {
+            auto& dxr_cmd_list = dxr_bundles[i];
+            auto heap = _descriptor_heaps[i].get();
+            // TODO record commands
+            dxr_cmd_list->SetComputeRootSignature(global_root_sig_.get());
+            dxr_cmd_list->SetDescriptorHeaps(1, &heap);
+
+            // set resource views
+            // TODO set UAV table
+            dxr_cmd_list->SetComputeRootDescriptorTable(
+                GlobalRootSigParams::OutputViewSlot, heap->GetGPUDescriptorHandleForHeapStart());
+            dxr_cmd_list->SetComputeRootShaderResourceView(
+                GlobalRootSigParams::AccelerationStructureSlot, topLevelBuffer_->GetGPUVirtualAddress());
+            dxr_cmd_list->SetComputeRootConstantBufferView(
+                GlobalRootSigParams::RayGenConstantsSlot, cb_ray_->GetGPUVirtualAddress());
+            dxr_cmd_list->SetComputeRootConstantBufferView(
+                GlobalRootSigParams::RayTracingConstantsSlot, cb_raytracing_->GetGPUVirtualAddress());
+            dxr_cmd_list->SetComputeRootShaderResourceView(
+                GlobalRootSigParams::ParticleBufferSlot, data_.data()->GetGPUVirtualAddress());
+
+            // set the pipeline state
+            dxr_cmd_list->SetPipelineState1(raytracing_pipeline_.get());
+
+            // dispatch rays
+            D3D12_DISPATCH_RAYS_DESC dispatchRaysDesc = {};
+            // raygen
+            dispatchRaysDesc.RayGenerationShaderRecord.StartAddress = sbtBuffer_->GetGPUVirtualAddress();
+            dispatchRaysDesc.RayGenerationShaderRecord.SizeInBytes = shader_table_descriptor_.raygen_record_size_;
+            // miss
+            dispatchRaysDesc.MissShaderTable.StartAddress =
+                sbtBuffer_->GetGPUVirtualAddress() + shader_table_descriptor_.miss_records_offset_;
+            dispatchRaysDesc.MissShaderTable.SizeInBytes = shader_table_descriptor_.miss_records_size_;
+            dispatchRaysDesc.MissShaderTable.StrideInBytes = shader_table_descriptor_.miss_records_stride_;
+            // hitgroup
+            dispatchRaysDesc.HitGroupTable.StartAddress =
+                sbtBuffer_->GetGPUVirtualAddress() + shader_table_descriptor_.hitgroup_records_offset_;
+            dispatchRaysDesc.HitGroupTable.SizeInBytes = shader_table_descriptor_.hitgroup_records_size_;
+            dispatchRaysDesc.HitGroupTable.StrideInBytes = shader_table_descriptor_.hitgroup_records_stride_;
+
+            const auto viewport = config.get<benchmark_base::viewport_type>(factor_viewport);
+            dispatchRaysDesc.Width = viewport[0];
+            dispatchRaysDesc.Height = viewport[1];
+            dispatchRaysDesc.Depth = 1;
+
+            dxr_cmd_list->DispatchRays(&dispatchRaysDesc);
+
+            // TODO copy the render target to the back buffer
+            /*transition_resource(dxr_cmd_list.get(), render_targets_[i].get(), D3D12_RESOURCE_STATE_COMMON,
+                D3D12_RESOURCE_STATE_COPY_SOURCE);
+
+            enable_target(dxr_cmd_list.get(), i, D3D12_RESOURCE_STATE_COPY_DEST);
+            clear_target(dxr_cmd_list.get(), i);
+            copy_to_target(dxr_cmd_list.get(), render_targets_[i].get(), i);
+            disable_target(dxr_cmd_list.get(), i, D3D12_RESOURCE_STATE_COPY_DEST);
+
+            transition_resource(dxr_cmd_list.get(), render_targets_[i].get(), D3D12_RESOURCE_STATE_COPY_SOURCE,
+                D3D12_RESOURCE_STATE_COMMON);*/
+
+            close_command_list(dxr_cmd_list.get());
+            /*device.close_and_execute_command_list(cmd_lists[i]);
+            present_target(config);
+
+            device.wait_for_gpu();*/
+        }
+
+        /*for (UINT i = 0; i < 20000; ++i) {
             auto cmd_list = cmd_lists[this->buffer_index()];
             device.execute_command_list(cmd_list);
             present_target(config);
             device.wait_for_gpu();
+        }*/
+
+
+        // Do prewarming and compute number of CPU iterations at the same time.
+        log::instance().write_line(log_level::debug, "Prewarming ...");
+        {
+            auto prewarms = (std::max)(1u, cfg.min_prewarms());
+
+            do {
+                mctx.cpu_timer.start();
+                for (std::uint32_t i = 0; i < mctx.cpu_iterations; ++i) {
+                    auto cmd_list = cmd_lists[this->buffer_index()];
+                    device.execute_command_list(cmd_list);
+                    present_target(config);
+                }
+                device.wait_for_gpu();
+                prewarms = mctx.check_cpu_iterations(cfg.min_wall_time());
+            } while (prewarms > 0);
+        }
+
+        // Do the wall clock measurement using the prepared command lists.
+        log::instance().write_line(log_level::debug,
+            "Measuring wall clock "
+            "timings over {} iterations ...",
+            mctx.cpu_iterations);
+        {
+            mctx.cpu_timer.start();
+            for (std::uint32_t i = 0; i < mctx.cpu_iterations; ++i) {
+                auto cmd_list = cmd_lists[this->buffer_index()];
+                device.execute_command_list(cmd_list);
+                this->present_target(config);
+            }
+            device.wait_for_gpu();
+            cpu_time = mctx.cpu_timer.elapsed_millis();
+        }
+
+        // Do the GPU counter measurements using individual command lists.
+        gpu_times.resize(cfg.gpu_counter_iterations());
+        for (std::uint32_t i = 0; i < cfg.gpu_counter_iterations(); ++i) {
+            log::instance().write_line(log_level::debug,
+                "GPU counter measurement "
+                "#{}.",
+                i);
+            auto cmd_list = cmd_lists[this->buffer_index()];
+            reset_command_list(cmd_list);
+
+            auto heap = _descriptor_heaps[this->buffer_index()].get();
+            
+            cmd_list->SetComputeRootSignature(global_root_sig_.get());
+            cmd_list->SetDescriptorHeaps(1, &heap);
+
+            
+            mctx.gpu_timer.start_frame();
+            mctx.gpu_timer.start(cmd_list.get(), 0);
+            cmd_list->ExecuteBundle(dxr_bundles[this->buffer_index()].get());
+            transition_resource(cmd_list.get(), render_targets_[this->buffer_index()].get(),
+                D3D12_RESOURCE_STATE_COMMON,
+                D3D12_RESOURCE_STATE_COPY_SOURCE);
+
+            enable_target(cmd_list.get(), this->buffer_index(), D3D12_RESOURCE_STATE_COPY_DEST);
+            //clear_target(cmd_list.get(), this->buffer_index());
+            copy_to_target(cmd_list.get(), render_targets_[this->buffer_index()].get(), this->buffer_index());
+            disable_target(cmd_list.get(), this->buffer_index(), D3D12_RESOURCE_STATE_COPY_DEST);
+
+            transition_resource(cmd_list.get(), render_targets_[this->buffer_index()].get(), D3D12_RESOURCE_STATE_COPY_SOURCE,
+                D3D12_RESOURCE_STATE_COMMON);
+            mctx.gpu_timer.end(cmd_list.get(), 0);
+            const auto timer_index = mctx.gpu_timer.end_frame(cmd_list.get());
+
+            device.close_and_execute_command_list(cmd_list);
+            this->present_target(config);
+
+            device.wait_for_gpu();
+            gpu_times[i] = gpu_timer::to_milliseconds(mctx.gpu_timer.evaluate(timer_index, 0), gpu_freq);
+        }
+
+        // Obtain pipeline statistics.
+        log::instance().write_line(log_level::debug, "Collecting pipeline "
+                                                     "statistics ...");
+        {
+            auto cmd_list = cmd_lists[this->buffer_index()];
+            reset_command_list(cmd_list);
+
+            auto heap = _descriptor_heaps[this->buffer_index()].get();
+
+            cmd_list->SetComputeRootSignature(global_root_sig_.get());
+            cmd_list->SetDescriptorHeaps(1, &heap);
+            
+            stats_query.begin_frame();
+
+            stats_query.begin(cmd_list.get(), 0);
+            cmd_list->ExecuteBundle(dxr_bundles[this->buffer_index()].get());
+            transition_resource(cmd_list.get(), render_targets_[this->buffer_index()].get(),
+                D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_SOURCE);
+
+            enable_target(cmd_list.get(), this->buffer_index(), D3D12_RESOURCE_STATE_COPY_DEST);
+            //clear_target(cmd_list.get(), this->buffer_index());
+            copy_to_target(cmd_list.get(), render_targets_[this->buffer_index()].get(), this->buffer_index());
+            disable_target(cmd_list.get(), this->buffer_index(), D3D12_RESOURCE_STATE_COPY_DEST);
+
+            transition_resource(cmd_list.get(), render_targets_[this->buffer_index()].get(),
+                D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_COMMON);
+            stats_query.end(cmd_list.get(), 0);
+            const auto stats_index = stats_query.end_frame(cmd_list.get());
+
+            device.close_and_execute_command_list(cmd_list);
+            this->present_target(config);
+
+            // Wait until the results are here.
+            device.wait_for_gpu();
+
+            pipeline_stats = stats_query.evaluate(stats_index, 0);
         }
     }
 
-    return trrojan::result();
+    const auto gpu_median = calc_median(gpu_times);
+    // Prepare the result set.
+    auto retval = std::make_shared<basic_result>(config,
+        std::initializer_list<std::string>{"benchmark", "particles", "data_extents", "ia_vertices", "ia_primitives",
+            "vs_invokes", "gs_invokes", "gs_primitives", "c_invokes", "c_primitives", "ps_invokes", "hs_invokes",
+            "ds_invokes", "cs_invokes", "gpu_time_min",
+            "gpu_time_med", "gpu_time_max", "wall_time_iterations", "wall_time", "wall_time_avg"});
+
+    // Output the results.
+    retval->add({this->name(), this->data_.spheres(), this->data_.extents(), pipeline_stats.IAVertices,
+        pipeline_stats.IAPrimitives, pipeline_stats.VSInvocations, pipeline_stats.GSInvocations,
+        pipeline_stats.GSPrimitives, pipeline_stats.CInvocations, pipeline_stats.CPrimitives,
+        pipeline_stats.PSInvocations, pipeline_stats.HSInvocations, pipeline_stats.DSInvocations,
+        pipeline_stats.CSInvocations, gpu_times.front(),
+        gpu_median, gpu_times.back(), mctx.cpu_iterations, cpu_time,
+        static_cast<double>(cpu_time) / mctx.cpu_iterations});
+
+    return retval;
 }
 
 bool sphere_rt_benchmark_base::clear_stale_data(const std::vector<std::string>& changed) {

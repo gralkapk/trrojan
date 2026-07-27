@@ -35,6 +35,8 @@ namespace trrojan::d3d12 {
             return this->_bbox[1];
         }
 
+        std::array<float, 3> extents(void) const;
+
         UINT spheres(void) const noexcept {
             return this->_cnt_spheres;
         }
