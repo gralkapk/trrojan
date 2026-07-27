@@ -5,7 +5,7 @@
 // <author>Christoph Müller</author>
 
 #pragma once
-
+#if defined(TRROJAN_WITH_POWER_OVERWHELMING)
 
 #include <array>
 #include <atomic>
@@ -22,8 +22,6 @@
 // Forward declarations.
 namespace trrojan { class configuration; }
 namespace trrojan { namespace detail { struct power_details; } }
-namespace visus { namespace power_overwhelming { class hmc8015_sensor; } }
-namespace visus { namespace power_overwhelming { class measurement; } }
 
 
 namespace trrojan {
@@ -44,6 +42,14 @@ namespace trrojan {
         /// A pointer type by which the collector is referenced.
         /// </summary>
         typedef std::shared_ptr<power_collector> pointer;
+
+        /// <summary>
+        /// Gets, if any, the power collector for the given
+        /// <pararmef name="configuration" />.
+        /// </summary>
+        /// <param name="c"></param>
+        /// <returns></returns>
+        static pointer get(const configuration& configuration);
 
         /// <summary>
         /// The column delimiter.
@@ -68,6 +74,16 @@ namespace trrojan {
         ~power_collector(void);
 
         /// <summary>
+        /// Generate a new unique identifier and set it as the description for
+        /// the current measurement.
+        /// </summary>
+        /// <remarks>
+        /// <para>This method is thread-safe.</para>
+        /// </remarks>
+        /// <returns></returns>
+        std::uint64_t enter_scope(void);
+
+        /// <summary>
         /// Gets the name of the log file the collector is writing to.
         /// </summary>
         /// <returns></returns>
@@ -76,64 +92,13 @@ namespace trrojan {
         }
 
         /// <summary>
-        /// Create and return the next unique benchmark identifier.
-        /// </summary>
-        /// <returns>The next identifier.</returns>
-        std::string next_unique_identifier(void);
-
-        /// <summary>
-        /// Updates the description of what is currently measured.
+        /// Clears the description for the current measurement, which will
+        /// temporarily prevent samples from being saved.
         /// </summary>
         /// <remarks>
-        /// <para>Setting a new description flushes all data that have been
-        /// collected for the previous description to disk.</para>
-        /// <para>Setting an empty descriptions will disable the collection
-        /// of data until a new non-empty string is set. The sensors will
-        /// still run, but all samples will be discarded.</para>
+        /// <para>This method is thread-safe.</para>
         /// </remarks>
-        /// <param name="description"></param>
-        void set_description(const std::string& description);
-
-        /// <summary>
-        /// Updates the description of what is currently measured to the
-        /// given configuration.
-        /// </summary>
-        /// <remarks>
-        /// <para>Setting a new description flushes all data that have been
-        /// collected for the previous description to disk.</para>
-        /// </remarks>
-        /// <param name="config"></param>
-        /// <param name="phase"></param>
-        void set_description(const configuration& config,
-            const std::string& phase);
-
-        /// <summary>
-        /// Sets the header text to be written in the first line of the file.
-        /// </summary>
-        /// <param name="config">The configuration to be included in each line-
-        /// </param>
-        /// <param name="phase">The name of the phase column, which defaults to
-        /// &quot;phase&quot;.</param>
-        void set_header(const configuration& config,
-            const std::string &phase = "phase");
-
-        /// <summary>
-        /// Sets the header text to be written in the first line of the file.
-        /// </summary>
-        /// <param name="uid">The name of the column of the unique power ID,
-        /// which defaults to &quot;power_uid&quot;.</param>
-        void set_header(const std::string& uid = "power_uid");
-
-        /// <summary>
-        /// Generate a new unique identifier and set it as the description for
-        /// the current measurement.
-        /// </summary>
-        /// <returns></returns>
-        inline std::string set_next_unique_description(void) {
-            auto retval = this->next_unique_identifier();
-            this->set_description(retval);
-            return retval;
-        }
+        void leave_scope(void);
 
         /// <summary>
         /// Trigger time sync on sensors with internal clock.
@@ -153,38 +118,14 @@ namespace trrojan {
 
     private:
 
-        static void on_measurement(
-            const visus::power_overwhelming::measurement& m,
-            void *context);
-
-        static void start_hmc8015_sensor(
-            visus::power_overwhelming::hmc8015_sensor& sensor);
-
-        void flush_buffer(void);
-
-        void sample(const interval_type sampling_interval);
-
-        void setup_adl_sensors(void);
-
-        void setup_hmc8015_sensors(void);
-
-        void setup_nvml_sensors(void);
-
-        void setup_tinkerforge_sensors(void);
-
-        std::string _description;
         std::unique_ptr<detail::power_details> _details;
         std::string _file;
-        std::string _header;
-        std::atomic<bool> _is_collecting;
-        std::atomic<bool> _is_running;
-        std::mutex _lock;
-        std::thread _sampler;
-        std::ofstream _stream;
-        std::atomic<std::uint64_t> _unique_identifier;
+        std::atomic<std::uint64_t> _next_identifier;
 #else /* defined(TRROJAN_WITH_POWER_OVERWHELMING) */
         power_collector(void) = delete;
 #endif /* defined(TRROJAN_WITH_POWER_OVERWHELMING) */
     };
 
 } /* end namespace trrojan */
+
+#endif /* defined(TRROJAN_WITH_POWER_OVERWHELMING) */

@@ -180,19 +180,8 @@ namespace trrojan {
         /// </summary>
         /// <param name="collector">An optional power collector.</param>
         /// <returns>The ID of the power measuring scope.</returns>
-        static std::string enter_power_scope(
+        static std::uint64_t enter_power_scope(
             const power_collector::pointer& collector);
-
-        /// <summary>
-        /// Checks whether <paramref name="c" /> contains a power collector, and
-        /// if so, sets the output header.
-        /// </summary>
-        /// <param name="c">The configuration to retrieve the collector from.
-        /// </param>
-        /// <returns>The power collector if there was one and it has been
-        /// successfully initialised, <c>nullptr</c> otherwise.</returns>
-        static power_collector::pointer initialise_power_collector(
-            const trrojan::configuration& c);
 
         /// <summary>
         /// If <paramref name="collector" /> is not <c>nullptr</c>, notify it
