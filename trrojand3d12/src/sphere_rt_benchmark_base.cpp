@@ -614,6 +614,7 @@ trrojan::result sphere_rt_benchmark_base::on_run(d3d12::device& device, const co
 
         // Do the GPU counter measurements using individual command lists.
         gpu_times.resize(cfg.gpu_counter_iterations());
+        power_collector->enter_scope();
         for (std::uint32_t i = 0; i < cfg.gpu_counter_iterations(); ++i) {
             log::instance().write_line(log_level::debug,
                 "GPU counter measurement "
@@ -651,6 +652,7 @@ trrojan::result sphere_rt_benchmark_base::on_run(d3d12::device& device, const co
             device.wait_for_gpu();
             gpu_times[i] = gpu_timer::to_milliseconds(mctx.gpu_timer.evaluate(timer_index, 0), gpu_freq);
         }
+        power_collector->leave_scope();
 
         // Obtain pipeline statistics.
         log::instance().write_line(log_level::debug, "Collecting pipeline "

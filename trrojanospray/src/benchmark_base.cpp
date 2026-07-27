@@ -15,7 +15,7 @@ trrojan::result benchmark_base::run(const configuration& config) {
 
     auto genericDev = config.get<trrojan::device>(factor_device);
     auto device = std::dynamic_pointer_cast<trrojan::ospray::device>(genericDev);
-    auto power_collector = initialise_power_collector(config);
+    auto power_collector = power_collector::get(config);
 
     if (device == nullptr) {
         throw std::runtime_error("Device is not an OSPRay device.");
