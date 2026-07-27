@@ -13,6 +13,8 @@
 
 #include "trrojan/ospray/sphere_configuration.h"
 
+#include "trrojan/ospray/measurement_context.h"
+
 #include <ospray/ospray_cpp.h>
 #include <ospray/ospray_util.h>
 
@@ -48,6 +50,7 @@ void sphere_benchmark::on_device_switch(device& device) {
 result sphere_benchmark::on_run(ospray::device& device, const configuration& config,
     power_collector::pointer& power_collector, const std::vector<std::string>& changed) {
     sphere_configuration cfg{config};
+    measurement_context mctx;
 
     ::ospray::cpp::GeometricModel sphere_model;
        
@@ -126,8 +129,13 @@ result sphere_benchmark::on_run(ospray::device& device, const configuration& con
     auto frame_future = renderer.renderFrame(static_cast<OSPFrameBuffer>(*render_target()), static_cast<OSPCamera>(camera),
         world.handle());
     ospWait(frame_future);
+    auto const frame_time = ospGetTaskDuration(frame_future);
 
     render_target()->present(0);
+
+    // TODO: prewarm iterations
+
+    // TODO: measure iterations
 
     return result();
 }
