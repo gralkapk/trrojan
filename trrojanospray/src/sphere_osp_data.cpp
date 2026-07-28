@@ -126,6 +126,12 @@ void sphere_osp_data::clear() {
     _cnt_spheres = 0;
 }
 
+std::array<float, 3> sphere_osp_data::extents(void) const {
+    std::array<float, 3> retval = {std::abs(this->_bbox[1].x - this->_bbox[0].x),
+        std::abs(this->_bbox[1].y - this->_bbox[0].y), std::abs(this->_bbox[1].z - this->_bbox[0].z)};
+    return retval;
+}
+
 void sphere_osp_data::fit_bounding_box(const mmpld::list_header& header, const void* particles) {
     typedef std::decay<decltype(*header.bounding_box)>::type bbox_type;
     typedef std::numeric_limits<bbox_type> bbox_limits;

@@ -1,15 +1,15 @@
 #include "trrojan/ospray/sphere_benchmark.h"
 
-#include "trrojan/log.h"
 #include "trrojan/clipping.h"
+#include "trrojan/log.h"
 
+#include "trrojan/ospray/camera.h"
+#include "trrojan/ospray/camera_light.h"
 #include "trrojan/ospray/geometric_model.h"
 #include "trrojan/ospray/group.h"
 #include "trrojan/ospray/instance.h"
 #include "trrojan/ospray/sphere_geometry.h"
 #include "trrojan/ospray/world.h"
-#include "trrojan/ospray/camera_light.h"
-#include "trrojan/ospray/camera.h"
 
 #include "trrojan/ospray/sphere_configuration.h"
 
@@ -53,10 +53,11 @@ result sphere_benchmark::on_run(ospray::device& device, const configuration& con
     measurement_context mctx;
 
     ::ospray::cpp::GeometricModel sphere_model;
-       
+
     // load data
     if (!this->_data) {
-        log::instance().write_line(log_level::information, "Loading data set: ", cfg.data_set(), " frame: ", cfg.frame());
+        log::instance().write_line(
+            log_level::information, "Loading data set: ", cfg.data_set(), " frame: ", cfg.frame());
         this->_data.load(cfg.data_set(), cfg.frame());
 
         ::ospray::cpp::Geometry geometry("sphere");
@@ -71,7 +72,8 @@ result sphere_benchmark::on_run(ospray::device& device, const configuration& con
 
         sphere_model = ::ospray::cpp::GeometricModel(geometry);
 
-        sphere_model.setParam("color", ::ospray::cpp::SharedData(this->_data.colors().data(), OSP_VEC4F, this->_data.colors().size()));
+        sphere_model.setParam(
+            "color", ::ospray::cpp::SharedData(this->_data.colors().data(), OSP_VEC4F, this->_data.colors().size()));
         sphere_model.setParam("material", material);
         sphere_model.commit();
     }
@@ -126,18 +128,63 @@ result sphere_benchmark::on_run(ospray::device& device, const configuration& con
     camera camera(camera_config);
     camera.commit();
 
-    auto frame_future = renderer.renderFrame(static_cast<OSPFrameBuffer>(*render_target()), static_cast<OSPCamera>(camera),
-        world.handle());
+    /*auto frame_future = renderer.renderFrame(
+        static_cast<OSPFrameBuffer>(*render_target()), static_cast<OSPCamera>(camera), world.handle());
     ospWait(frame_future);
     auto const frame_time = ospGetTaskDuration(frame_future);
 
-    render_target()->present(0);
+    render_target()->present(0);*/
 
     // TODO: prewarm iterations
+    log::instance().write_line(log_level::debug, "Prewarming ...");
+    {
+        auto prewarms = (std::max) (1u, cfg.min_prewarms());
+
+        do {
+            mctx.cpu_timer.start();
+            for (std::uint32_t i = 0; i < mctx.cpu_iterations; ++i) {
+                auto frame_future = renderer.renderFrame(
+                    static_cast<OSPFrameBuffer>(*render_target()), static_cast<OSPCamera>(camera), world.handle());
+                ospWait(frame_future);
+                render_target()->present(0);
+            }
+            device.wait_for_gpu();
+            prewarms = mctx.check_cpu_iterations(cfg.min_wall_time());
+        } while (prewarms > 0);
+    }
 
     // TODO: measure iterations
+    std::vector<float> cpu_times(cfg.counter_iterations());
+    power_collector->enter_scope();
+    for (std::uint32_t i = 0; i < cfg.counter_iterations(); ++i) {
+        auto frame_future = renderer.renderFrame(
+            static_cast<OSPFrameBuffer>(*render_target()), static_cast<OSPCamera>(camera), world.handle());
+        ospWait(frame_future);
+        render_target()->present(0);
+        cpu_times[i] = ospGetTaskDuration(frame_future);
+    }
+    power_collector->leave_scope();
 
-    return result();
+    std::sort(cpu_times.begin(), cpu_times.end());
+    auto cpu_median = cpu_times[cpu_times.size() / 2];
+    if (cpu_times.size() % 2 == 0) {
+        cpu_median += cpu_times[cpu_times.size() / 2 - 1];
+        cpu_median *= 0.5f;
+    }
+
+    auto const cpu_min_s = std::chrono::duration<float>(cpu_times.front());
+    auto const cpu_max_s = std::chrono::duration<float>(cpu_times.back());
+    auto const cpu_median_s = std::chrono::duration<float>(cpu_median);
+
+    auto result =
+        std::make_shared<basic_result>(config, std::initializer_list<std::string>{"benchmark", "particles",
+                                                   "data_extents", "cpu_time_min", "cpu_time_med", "cpu_time_max"});
+    result->add({this->name(), this->_data.spheres(), this->_data.extents(),
+        std::chrono::duration_cast<std::chrono::milliseconds>(cpu_min_s).count(),
+        std::chrono::duration_cast<std::chrono::milliseconds>(cpu_median_s).count(),
+        std::chrono::duration_cast<std::chrono::milliseconds>(cpu_max_s).count()});
+
+    return result;
 }
 
 void sphere_benchmark::configure_camera(const configuration& config, const float fovy) {

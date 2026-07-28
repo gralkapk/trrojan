@@ -24,6 +24,8 @@ namespace trrojan::ospray {
             return this->_bbox;
         }
 
+        std::array<float, 3> extents(void) const;
+
         const glm::vec3& bbox_start(void) const noexcept {
             return this->_bbox[0];
         }
