@@ -584,8 +584,8 @@ trrojan::result sphere_rt_benchmark_base::on_run(d3d12::device& device, const co
         {
             auto prewarms = (std::max)(1u, cfg.min_prewarms());
 
+            mctx.cpu_timer.start();
             do {
-                mctx.cpu_timer.start();
                 for (std::uint32_t i = 0; i < mctx.cpu_iterations; ++i) {
                     auto cmd_list = cmd_lists[this->buffer_index()];
                     device.execute_command_list(cmd_list);
@@ -863,7 +863,7 @@ void sphere_rt_benchmark_base::create_acceleration_structure(
         // build acceleration structure
         {
             // TODO need specific frame? (this->buffer_index())
-            auto heap = _descriptor_heaps[0].get();
+            auto heap = _descriptor_heaps.back().get();
             assert(heap != nullptr);
             assert(heap->GetDesc().Type == D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
@@ -887,9 +887,11 @@ void sphere_rt_benchmark_base::create_acceleration_structure(
                 auto base_size = std::ceilf(std::sqrtf(num_particles));
                 auto const thread_group_size_x = static_cast<UINT>(base_size);
                 auto const thread_group_size_y = static_cast<UINT>(num_particles / base_size + 1);
-                compute_constants_->dispatchSize = {thread_group_size_x, thread_group_size_y, 1};
+                compute_constants_->dispatchSize = {
+                    static_cast<UINT>(thread_group_size_x / 32 + 1), thread_group_size_y, 1};
                 compute_constants_->num_particles = num_particles;
-                dxrCmdList->Dispatch(thread_group_size_x / 32 + 1, thread_group_size_y, 1);
+                dxrCmdList->Dispatch(compute_constants_->dispatchSize.x, compute_constants_->dispatchSize.y,
+                    compute_constants_->dispatchSize.z);
 
                 // set barrier on AABB buffer to make sure compute shader is done before building acceleration structure
                 auto barrier = CD3DX12_RESOURCE_BARRIER::UAV(aabb_buffer.get());

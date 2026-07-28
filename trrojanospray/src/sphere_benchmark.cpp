@@ -139,9 +139,8 @@ result sphere_benchmark::on_run(ospray::device& device, const configuration& con
     log::instance().write_line(log_level::debug, "Prewarming ...");
     {
         auto prewarms = (std::max) (1u, cfg.min_prewarms());
-
+        mctx.cpu_timer.start();
         do {
-            mctx.cpu_timer.start();
             for (std::uint32_t i = 0; i < mctx.cpu_iterations; ++i) {
                 auto frame_future = renderer.renderFrame(
                     static_cast<OSPFrameBuffer>(*render_target()), static_cast<OSPCamera>(camera), world.handle());
