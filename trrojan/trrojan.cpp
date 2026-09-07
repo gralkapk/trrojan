@@ -93,7 +93,19 @@ int main(const int argc, const char **argv) {
                     }
                 }
 
-                power_collector->start(*it, std::chrono::milliseconds(10));
+                std::string dump_location;
+                {
+                    auto jt = trrojan::find_argument("--dump-power-sensors",
+                        cmdLine.begin(), cmdLine.end());
+                    if (jt != cmdLine.end()) {
+                        dump_location = *jt;
+                    }
+                }
+
+                power_collector->start(
+                    *it,
+                    std::chrono::milliseconds(10),
+                    dump_location);
             }
         }
 #endif /* defined(TRROJAN_WITH_POWER_OVERWHELMING) */
@@ -138,6 +150,17 @@ int main(const int argc, const char **argv) {
             }
         }
 
+        // Configure the device to be excluded, which is intended to skip the
+        // onboard GPU many processors have.
+        std::vector<std::string> exclude_devices;
+        {
+            auto it = trrojan::find_argument("--exclude-device",
+                cmdLine.begin(), cmdLine.end());
+            if (it != cmdLine.end()) {
+                exclude_devices.push_back(*it);
+            }
+        }
+
         /* Configure the executive. */
         trrojan::executive exe;
         exe.load_plugins(cmdLine);
@@ -151,7 +174,7 @@ int main(const int argc, const char **argv) {
                     trrojan::log_level::information, "Running benchmarks "
                     "configured in TRROLL script \"{}\" ...", *it);
                 exe.trroll(*it, *output, coolDown, continue_at,
-                    power_collector);
+                    power_collector, exclude_devices);
             }
         }
 

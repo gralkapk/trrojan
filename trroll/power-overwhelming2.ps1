@@ -28,7 +28,7 @@ $troll | %{
         throw "TRRoll script `"$t`" does not exist."
     }
 
-    $l = Join-Path $out ([System.IO.Path]::ChangeExtension($_, '.txt'))
+    $l = Join-Path $out ([System.IO.Path]::ChangeExtension($_, '.log'))
     Write-Host "Log output is `"$l`"."
 
     $o = Join-Path $out ([System.IO.Path]::ChangeExtension("timings-$_", '.csv'))
@@ -37,7 +37,10 @@ $troll | %{
     $p = Join-Path $out ([System.IO.Path]::ChangeExtension("power-$_", '.csv'))
     Write-Host "Power output is `"$p`"."
 
-    $args = '--nologo', '--trroll', $t, '--log', $l, '--output', $o, '--power', $p
+    $s = Join-Path $out ([System.IO.Path]::ChangeExtension("sensors-$_", '.json'))
+    Write-Host "Sensor dump is `"$s`"."
+
+    $args = '--nologo', '--trroll', $t, '--log', $l, '--output', $o, '--power', $p, '--dump-power-sensors', $s
     if ($rtx) {
         $args += '--rtx-configuration'
         $rtx += $rtx
