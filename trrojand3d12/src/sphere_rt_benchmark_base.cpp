@@ -376,8 +376,9 @@ trrojan::result sphere_rt_benchmark_base::on_run(d3d12::device& device, const co
 
     // set ray tracing constants
     {
-        ray_tracing_constants_->spp = 1;
-        ray_tracing_constants_->recursionDepth = 0;
+        ray_tracing_constants_->spp = cfg.spp();
+        ray_tracing_constants_->recursionDepth = cfg.rec_depth();
+        ray_tracing_constants_->frameIdx = 0;
     }
 
     // create the UAVs for the rt render targets
@@ -491,7 +492,7 @@ trrojan::result sphere_rt_benchmark_base::on_run(d3d12::device& device, const co
                 D3D12_RESOURCE_STATE_COPY_SOURCE);
 
             enable_target(cmd_lists[i].get(), i, D3D12_RESOURCE_STATE_COPY_DEST);
-            clear_target(cmd_lists[i].get(), i);
+            //clear_target(cmd_lists[i].get(), i);
             copy_to_target(cmd_lists[i].get(), render_targets_[i].get(), i);
             disable_target(cmd_lists[i].get(), i, D3D12_RESOURCE_STATE_COPY_DEST);
 
@@ -614,7 +615,7 @@ trrojan::result sphere_rt_benchmark_base::on_run(d3d12::device& device, const co
 
         // Do the GPU counter measurements using individual command lists.
         gpu_times.resize(cfg.gpu_counter_iterations());
-        power_collector->enter_scope();
+        enter_power_scope(power_collector);
         for (std::uint32_t i = 0; i < cfg.gpu_counter_iterations(); ++i) {
             log::instance().write_line(log_level::debug,
                 "GPU counter measurement "
@@ -631,6 +632,7 @@ trrojan::result sphere_rt_benchmark_base::on_run(d3d12::device& device, const co
             
             mctx.gpu_timer.start_frame();
             mctx.gpu_timer.start(cmd_list.get(), 0);
+            ++(ray_tracing_constants_->frameIdx);
             cmd_list->ExecuteBundle(dxr_bundles[this->buffer_index()].get());
             transition_resource(cmd_list.get(), render_targets_[this->buffer_index()].get(),
                 D3D12_RESOURCE_STATE_COMMON,
@@ -652,63 +654,56 @@ trrojan::result sphere_rt_benchmark_base::on_run(d3d12::device& device, const co
             device.wait_for_gpu();
             gpu_times[i] = gpu_timer::to_milliseconds(mctx.gpu_timer.evaluate(timer_index, 0), gpu_freq);
         }
-        power_collector->leave_scope();
+        leave_power_scope(power_collector);
 
         // Obtain pipeline statistics.
-        log::instance().write_line(log_level::debug, "Collecting pipeline "
-                                                     "statistics ...");
-        {
-            auto cmd_list = cmd_lists[this->buffer_index()];
-            reset_command_list(cmd_list);
+        //log::instance().write_line(log_level::debug, "Collecting pipeline "
+        //                                             "statistics ...");
+        //{
+        //    auto cmd_list = cmd_lists[this->buffer_index()];
+        //    reset_command_list(cmd_list);
 
-            auto heap = _descriptor_heaps[this->buffer_index()].get();
+        //    auto heap = _descriptor_heaps[this->buffer_index()].get();
 
-            cmd_list->SetComputeRootSignature(global_root_sig_.get());
-            cmd_list->SetDescriptorHeaps(1, &heap);
-            
-            stats_query.begin_frame();
+        //    cmd_list->SetComputeRootSignature(global_root_sig_.get());
+        //    cmd_list->SetDescriptorHeaps(1, &heap);
+        //    
+        //    stats_query.begin_frame();
 
-            stats_query.begin(cmd_list.get(), 0);
-            cmd_list->ExecuteBundle(dxr_bundles[this->buffer_index()].get());
-            transition_resource(cmd_list.get(), render_targets_[this->buffer_index()].get(),
-                D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_SOURCE);
+        //    stats_query.begin(cmd_list.get(), 0);
+        //    cmd_list->ExecuteBundle(dxr_bundles[this->buffer_index()].get());
+        //    transition_resource(cmd_list.get(), render_targets_[this->buffer_index()].get(),
+        //        D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_SOURCE);
 
-            enable_target(cmd_list.get(), this->buffer_index(), D3D12_RESOURCE_STATE_COPY_DEST);
-            //clear_target(cmd_list.get(), this->buffer_index());
-            copy_to_target(cmd_list.get(), render_targets_[this->buffer_index()].get(), this->buffer_index());
-            disable_target(cmd_list.get(), this->buffer_index(), D3D12_RESOURCE_STATE_COPY_DEST);
+        //    enable_target(cmd_list.get(), this->buffer_index(), D3D12_RESOURCE_STATE_COPY_DEST);
+        //    //clear_target(cmd_list.get(), this->buffer_index());
+        //    copy_to_target(cmd_list.get(), render_targets_[this->buffer_index()].get(), this->buffer_index());
+        //    disable_target(cmd_list.get(), this->buffer_index(), D3D12_RESOURCE_STATE_COPY_DEST);
 
-            transition_resource(cmd_list.get(), render_targets_[this->buffer_index()].get(),
-                D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_COMMON);
-            stats_query.end(cmd_list.get(), 0);
-            const auto stats_index = stats_query.end_frame(cmd_list.get());
+        //    transition_resource(cmd_list.get(), render_targets_[this->buffer_index()].get(),
+        //        D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_COMMON);
+        //    stats_query.end(cmd_list.get(), 0);
+        //    const auto stats_index = stats_query.end_frame(cmd_list.get());
 
-            device.close_and_execute_command_list(cmd_list);
-            this->present_target(config);
+        //    device.close_and_execute_command_list(cmd_list);
+        //    this->present_target(config);
 
-            // Wait until the results are here.
-            device.wait_for_gpu();
+        //    // Wait until the results are here.
+        //    device.wait_for_gpu();
 
-            pipeline_stats = stats_query.evaluate(stats_index, 0);
-        }
+        //    pipeline_stats = stats_query.evaluate(stats_index, 0);
+        //}
     }
 
     const auto gpu_median = calc_median(gpu_times);
     // Prepare the result set.
-    auto retval = std::make_shared<basic_result>(config,
-        std::initializer_list<std::string>{"benchmark", "particles", "data_extents", "ia_vertices", "ia_primitives",
-            "vs_invokes", "gs_invokes", "gs_primitives", "c_invokes", "c_primitives", "ps_invokes", "hs_invokes",
-            "ds_invokes", "cs_invokes", "gpu_time_min",
-            "gpu_time_med", "gpu_time_max", "wall_time_iterations", "wall_time", "wall_time_avg"});
+    auto retval = std::make_shared<basic_result>(
+        config, std::initializer_list<std::string>{"benchmark", "particles", "data_extents", "gpu_time_min",
+                    "gpu_time_med", "gpu_time_max", "wall_time_iterations", "wall_time", "wall_time_avg"});
 
     // Output the results.
-    retval->add({this->name(), this->data_.spheres(), this->data_.extents(), pipeline_stats.IAVertices,
-        pipeline_stats.IAPrimitives, pipeline_stats.VSInvocations, pipeline_stats.GSInvocations,
-        pipeline_stats.GSPrimitives, pipeline_stats.CInvocations, pipeline_stats.CPrimitives,
-        pipeline_stats.PSInvocations, pipeline_stats.HSInvocations, pipeline_stats.DSInvocations,
-        pipeline_stats.CSInvocations, gpu_times.front(),
-        gpu_median, gpu_times.back(), mctx.cpu_iterations, cpu_time,
-        static_cast<double>(cpu_time) / mctx.cpu_iterations});
+    retval->add({this->name(), this->data_.spheres(), this->data_.extents(), gpu_times.front(), gpu_median,
+        gpu_times.back(), mctx.cpu_iterations, cpu_time, static_cast<double>(cpu_time) / mctx.cpu_iterations});
 
     return retval;
 }
@@ -887,11 +882,9 @@ void sphere_rt_benchmark_base::create_acceleration_structure(
                 auto base_size = std::ceilf(std::sqrtf(num_particles));
                 auto const thread_group_size_x = static_cast<UINT>(base_size);
                 auto const thread_group_size_y = static_cast<UINT>(num_particles / base_size + 1);
-                compute_constants_->dispatchSize = {
-                    static_cast<UINT>(thread_group_size_x / 32 + 1), thread_group_size_y, 1};
+                compute_constants_->dispatchSize = {thread_group_size_x, thread_group_size_y, 1};
                 compute_constants_->num_particles = num_particles;
-                dxrCmdList->Dispatch(compute_constants_->dispatchSize.x, compute_constants_->dispatchSize.y,
-                    compute_constants_->dispatchSize.z);
+                dxrCmdList->Dispatch(thread_group_size_x / 32 + 1, thread_group_size_y, 1);
 
                 // set barrier on AABB buffer to make sure compute shader is done before building acceleration structure
                 auto barrier = CD3DX12_RESOURCE_BARRIER::UAV(aabb_buffer.get());

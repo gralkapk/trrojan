@@ -1,5 +1,6 @@
 #include "SphereRTShaderStructs.hlsli"
 #include "random.hlsli"
+#include "LocalLighting.hlsli"
 
 RWTexture2D<float4> RenderTarget : register(u0);
 RWTexture2D<float4> AccumulationBuffer : register(u1);
@@ -61,7 +62,7 @@ float3 random_in_unit_sphere(inout LCGRand rng)
 float4 trace_ray(RayDesc ray, inout LCGRand rng)
 {
     //uint max_bounces = FrameProperties.max_bounces;
-    uint max_bounces = 0;
+    uint max_bounces = RayTracingConstants.recursionDepth;
     float4 color = float4(1.f, 1.f, 1.f, 1.f);
 
     for (uint bounce = 0; true; ++bounce)
@@ -116,14 +117,14 @@ void RaygenShaderName()
     float2 fbSize = (float2) DispatchRaysDimensions();
 
     //uint frame_index = FrameProperties.frame_index;
-    uint frame_index = 0;
+    uint frame_index = RayTracingConstants.frameIdx;
     
     LCGRand rng = get_rng(frame_index);
     
     //uint spp = FrameProperties.spp;
     //int max_depth = FrameProperties.max_bounces;
-    uint spp = 1;
-    uint max_depth = 0;
+    uint spp = RayTracingConstants.spp;
+    //uint max_depth = RayTracingConstants.recursionDepth;
 
     float4 out_color = float4(0.f, 0.f, 0.f, 0.f);
     

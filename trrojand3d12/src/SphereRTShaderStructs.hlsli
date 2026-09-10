@@ -43,7 +43,8 @@ CB RayTracingConstantsStruct
 {
     uint spp;
     uint recursionDepth;
-    float padding[60];
+    uint frameIdx;
+    float padding[61];
 };
 
 CB ComputeConstantsStruct
