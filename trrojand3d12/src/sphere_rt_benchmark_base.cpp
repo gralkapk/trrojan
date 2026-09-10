@@ -437,6 +437,7 @@ trrojan::result sphere_rt_benchmark_base::on_run(d3d12::device& device, const co
 
 
     gpu_timer::millis_type cpu_time;
+    uint64_t powerUid = -1;
 
     // TODO TEST basic rendering command list
     {
@@ -615,7 +616,7 @@ trrojan::result sphere_rt_benchmark_base::on_run(d3d12::device& device, const co
 
         // Do the GPU counter measurements using individual command lists.
         gpu_times.resize(cfg.gpu_counter_iterations());
-        enter_power_scope(power_collector);
+        powerUid = enter_power_scope(power_collector);
         for (std::uint32_t i = 0; i < cfg.gpu_counter_iterations(); ++i) {
             log::instance().write_line(log_level::debug,
                 "GPU counter measurement "
@@ -698,11 +699,11 @@ trrojan::result sphere_rt_benchmark_base::on_run(d3d12::device& device, const co
     const auto gpu_median = calc_median(gpu_times);
     // Prepare the result set.
     auto retval = std::make_shared<basic_result>(
-        config, std::initializer_list<std::string>{"benchmark", "particles", "data_extents", "gpu_time_min",
+        config, std::initializer_list<std::string>{"benchmark", "power_uid", "particles", "data_extents", "gpu_time_min",
                     "gpu_time_med", "gpu_time_max", "wall_time_iterations", "wall_time", "wall_time_avg"});
 
     // Output the results.
-    retval->add({this->name(), this->data_.spheres(), this->data_.extents(), gpu_times.front(), gpu_median,
+    retval->add({this->name(), powerUid, this->data_.spheres(), this->data_.extents(), gpu_times.front(), gpu_median,
         gpu_times.back(), mctx.cpu_iterations, cpu_time, static_cast<double>(cpu_time) / mctx.cpu_iterations});
 
     return retval;
