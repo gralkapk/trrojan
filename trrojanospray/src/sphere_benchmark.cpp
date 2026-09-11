@@ -59,24 +59,24 @@ result sphere_benchmark::on_run(ospray::device& device, const configuration& con
         log::instance().write_line(
             log_level::information, "Loading data set: ", cfg.data_set(), " frame: ", cfg.frame());
         this->_data.load(cfg.data_set(), cfg.frame());
-
-        ::ospray::cpp::Geometry geometry("sphere");
-        geometry.setParam("sphere.position",
-            ::ospray::cpp::SharedData(this->_data.positions().data(), OSP_VEC3F, this->_data.positions().size()));
-        geometry.setParam("sphere.radius",
-            ::ospray::cpp::SharedData(this->_data.radii().data(), OSP_FLOAT, this->_data.radii().size()));
-        geometry.commit();
-
-        ::ospray::cpp::Material material("obj");
-        material.commit();
-
-        sphere_model = ::ospray::cpp::GeometricModel(geometry);
-
-        sphere_model.setParam(
-            "color", ::ospray::cpp::SharedData(this->_data.colors().data(), OSP_VEC4F, this->_data.colors().size()));
-        sphere_model.setParam("material", material);
-        sphere_model.commit();
     }
+
+    ::ospray::cpp::Geometry geometry("sphere");
+    geometry.setParam("sphere.position",
+        ::ospray::cpp::SharedData(this->_data.positions().data(), OSP_VEC3F, this->_data.positions().size()));
+    geometry.setParam(
+        "sphere.radius", ::ospray::cpp::SharedData(this->_data.radii().data(), OSP_FLOAT, this->_data.radii().size()));
+    geometry.commit();
+
+    ::ospray::cpp::Material material("obj");
+    material.commit();
+
+    sphere_model = ::ospray::cpp::GeometricModel(geometry);
+
+    sphere_model.setParam(
+        "color", ::ospray::cpp::SharedData(this->_data.colors().data(), OSP_VEC4F, this->_data.colors().size()));
+    sphere_model.setParam("material", material);
+    sphere_model.commit();
 
     configure_camera(config);
 
@@ -152,6 +152,8 @@ result sphere_benchmark::on_run(ospray::device& device, const configuration& con
         } while (prewarms > 0);
     }
 
+    render_target()->resetAccumulation();
+
     // TODO: measure iterations
     std::vector<float> cpu_times(cfg.counter_iterations());
     power_collector->enter_scope();
@@ -163,6 +165,8 @@ result sphere_benchmark::on_run(ospray::device& device, const configuration& con
         cpu_times[i] = ospGetTaskDuration(frame_future);
     }
     power_collector->leave_scope();
+
+    render_target()->resetAccumulation();
 
     std::sort(cpu_times.begin(), cpu_times.end());
     auto cpu_median = cpu_times[cpu_times.size() / 2];

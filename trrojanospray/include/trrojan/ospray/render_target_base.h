@@ -34,6 +34,8 @@ public:
 
     virtual void reset_buffers();
 
+    void resetAccumulation();
+
 private:
     unsigned int _width;
     unsigned int _height;

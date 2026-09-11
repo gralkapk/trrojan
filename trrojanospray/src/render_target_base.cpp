@@ -41,4 +41,8 @@ void render_target_base::copyColorTo(void* dst) {
 void render_target_base::reset_buffers() {
     // Implementation for resetting buffers
 }
+
+void render_target_base::resetAccumulation() {
+    ospResetAccumulation(reinterpret_cast<OSPFrameBuffer>(getObject()));
+}
 } // namespace trrojan::ospray
