@@ -183,6 +183,8 @@ namespace trrojan {
         static std::uint64_t enter_power_scope(
             const power_collector::pointer& collector);
 
+        static std::uint64_t enter_power_scope(const power_collector::pointer& collector, bool& done);
+
         /// <summary>
         /// If <paramref name="collector" /> is not <c>nullptr</c>, notify it
         /// that the active measurement scope was left. The collector will
