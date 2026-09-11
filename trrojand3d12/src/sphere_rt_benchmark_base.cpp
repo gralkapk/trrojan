@@ -616,8 +616,9 @@ trrojan::result sphere_rt_benchmark_base::on_run(d3d12::device& device, const co
 
         // Do the GPU counter measurements using individual command lists.
         gpu_times.resize(cfg.gpu_counter_iterations());
-        powerUid = enter_power_scope(power_collector);
-        for (std::uint32_t i = 0; i < cfg.gpu_counter_iterations(); ++i) {
+        bool done = false;
+        powerUid = enter_power_scope(power_collector, done);
+        for (std::uint32_t i = 0; i < cfg.gpu_counter_iterations() && !done; ++i) {
             log::instance().write_line(log_level::debug,
                 "GPU counter measurement "
                 "#{}.",
