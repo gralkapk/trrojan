@@ -10,6 +10,7 @@ _SPHERE_DEFINE_FACTOR(min_prewarms);
 _SPHERE_DEFINE_FACTOR(min_wall_time);
 _SPHERE_DEFINE_FACTOR(spp);
 _SPHERE_DEFINE_FACTOR(rec_depth);
+_SPHERE_DEFINE_FACTOR(ao_samples);
 
 #undef _SPHERE_DEFINE_FACTOR
 
@@ -25,7 +26,8 @@ sphere_configuration::sphere_configuration(const configuration& config)
         , _SPHERE_INIT_FACTOR(min_prewarms)
         , _SPHERE_INIT_FACTOR(min_wall_time)
         , _SPHERE_INIT_FACTOR(spp)
-        , _SPHERE_INIT_FACTOR(rec_depth) {}
+        , _SPHERE_INIT_FACTOR(rec_depth)
+        , _SPHERE_INIT_FACTOR(ao_samples) {}
 
 #undef _SPHERE_INIT_FACTOR
 

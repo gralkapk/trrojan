@@ -14,6 +14,7 @@ public:
     static const char* factor_min_wall_time;
     static const char* factor_spp;
     static const char* factor_rec_depth;
+    static const char* factor_ao_samples;
 
     explicit sphere_configuration(const configuration& config);
 
@@ -45,6 +46,10 @@ public:
         return this->_rec_depth;
     }
 
+    std::uint32_t ao_samples(void) const noexcept {
+        return this->_ao_samples;
+    }
+
 private:
     std::string _data_set;
     std::uint32_t _frame;
@@ -53,5 +58,6 @@ private:
     std::uint32_t _min_wall_time;
     std::uint32_t _spp;
     std::uint32_t _rec_depth;
+    std::uint32_t _ao_samples;
 };
 } // namespace trrojan::ospray

@@ -34,6 +34,8 @@ sphere_benchmark::sphere_benchmark() : benchmark_base("sphere-renderer") {
         factor::from_manifestations(sphere_configuration::factor_spp, static_cast<unsigned int>(1)));
     this->_default_configs.add_factor(
         factor::from_manifestations(sphere_configuration::factor_rec_depth, static_cast<unsigned int>(0)));
+    this->_default_configs.add_factor(
+        factor::from_manifestations(sphere_configuration::factor_ao_samples, static_cast<unsigned int>(0)));
 
     this->add_default_manoeuvre();
 }
@@ -109,10 +111,10 @@ result sphere_benchmark::on_run(ospray::device& device, const configuration& con
 
     // setup renderer
     renderer_base::config renderer_config = {};
-    renderer_config.spp = 1;
-    renderer_config.path_length = 1;
+    renderer_config.spp = cfg.spp();
+    renderer_config.path_length = cfg.rec_depth() + 1;
     renderer_config.ao_distance = std::numeric_limits<float>::max();
-    renderer_config.ao_samples = 0;
+    renderer_config.ao_samples = cfg.ao_samples();
     renderer_config.volume_sampling_rate = 1.0f;
     renderer_base renderer(renderer_config);
     renderer.commit();
@@ -155,16 +157,20 @@ result sphere_benchmark::on_run(ospray::device& device, const configuration& con
     render_target()->resetAccumulation();
 
     // TODO: measure iterations
+    log::instance().write_line(
+        log_level::debug, "Measuring CPU timings over {} iterations ...", cfg.counter_iterations());
     std::vector<float> cpu_times(cfg.counter_iterations());
-    power_collector->enter_scope();
-    for (std::uint32_t i = 0; i < cfg.counter_iterations(); ++i) {
+    bool done = false;
+    auto const powerUid = enter_power_scope(power_collector, done);
+    std::uint32_t actual_iterations = 0;
+    for (std::uint32_t i = 0; i < cfg.counter_iterations() && !done; ++i, ++actual_iterations) {
         auto frame_future = renderer.renderFrame(
             static_cast<OSPFrameBuffer>(*render_target()), static_cast<OSPCamera>(camera), world.handle());
         ospWait(frame_future);
         render_target()->present(0);
         cpu_times[i] = ospGetTaskDuration(frame_future);
     }
-    power_collector->leave_scope();
+    leave_power_scope(power_collector);
 
     render_target()->resetAccumulation();
 
@@ -179,10 +185,10 @@ result sphere_benchmark::on_run(ospray::device& device, const configuration& con
     auto const cpu_max_s = std::chrono::duration<float>(cpu_times.back());
     auto const cpu_median_s = std::chrono::duration<float>(cpu_median);
 
-    auto result =
-        std::make_shared<basic_result>(config, std::initializer_list<std::string>{"benchmark", "particles",
+    auto result = std::make_shared<basic_result>(
+        config, std::initializer_list<std::string>{"benchmark", "powerUid", "iterations", "particles",
                                                    "data_extents", "cpu_time_min", "cpu_time_med", "cpu_time_max"});
-    result->add({this->name(), this->_data.spheres(), this->_data.extents(),
+    result->add({this->name(), powerUid, actual_iterations, this->_data.spheres(), this->_data.extents(),
         std::chrono::duration_cast<std::chrono::milliseconds>(cpu_min_s).count(),
         std::chrono::duration_cast<std::chrono::milliseconds>(cpu_median_s).count(),
         std::chrono::duration_cast<std::chrono::milliseconds>(cpu_max_s).count()});
