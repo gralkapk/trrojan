@@ -186,8 +186,8 @@ result sphere_benchmark::on_run(ospray::device& device, const configuration& con
     auto const cpu_median_s = std::chrono::duration<float>(cpu_median);
 
     auto result = std::make_shared<basic_result>(
-        config, std::initializer_list<std::string>{"benchmark", "powerUid", "iterations", "particles",
-                                                   "data_extents", "cpu_time_min", "cpu_time_med", "cpu_time_max"});
+        config, std::initializer_list<std::string>{"benchmark", "powerUid", "iterations", "particles", "data_extents",
+                    "cpu_time_min", "cpu_time_med", "cpu_time_max"});
     result->add({this->name(), powerUid, actual_iterations, this->_data.spheres(), this->_data.extents(),
         std::chrono::duration_cast<std::chrono::milliseconds>(cpu_min_s).count(),
         std::chrono::duration_cast<std::chrono::milliseconds>(cpu_median_s).count(),
