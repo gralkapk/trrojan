@@ -5,6 +5,7 @@
 #include "trrojan/ospray/environment.h"
 
 #include "trrojan/ospray/sphere_benchmark.h"
+#include "trrojan/ospray/volume_benchmark.h"
 
 /// <summary>
 /// Handle of the plugin DLL.
@@ -47,6 +48,7 @@ trrojan::ospray::plugin::~plugin(void) { }
  */
 size_t trrojan::ospray::plugin::create_benchmarks(benchmark_list& dst) const {
     dst.emplace_back(std::make_shared<trrojan::ospray::sphere_benchmark>());
+    dst.emplace_back(std::make_shared<trrojan::ospray::volume_benchmark>());
     return 1;
 }
 

@@ -1,17 +1,17 @@
 #include "trrojan/ospray/volume_benchmark.h"
 
-#include "trrojan/log.h"
 #include "trrojan/brudervn_xfer_func.h"
-#include "trrojan/io.h"
 #include "trrojan/clipping.h"
+#include "trrojan/io.h"
+#include "trrojan/log.h"
 
-#include "trrojan/ospray/volume_configuration.h"
-#include "trrojan/ospray/measurement_context.h"
 #include "trrojan/ospray/camera.h"
+#include "trrojan/ospray/measurement_context.h"
 #include "trrojan/ospray/renderer_base.h"
+#include "trrojan/ospray/volume_configuration.h"
 
-#include <ospray/ospray_util.h>
 #include <ospray/ospray_cpp/ext/rkcommon.h>
+#include <ospray/ospray_util.h>
 
 #include <glm/gtc/type_ptr.hpp>
 
@@ -43,12 +43,55 @@ void volume_benchmark::optimise_order(configuration_set& inOutConfs) {
         {volume_configuration::factor_data_set, volume_configuration::factor_frame, benchmark_base::factor_device});
 }
 
+void get_scalar_range(std::vector<std::uint8_t> const& data, datraw::scalar_type type, float& out_min, float& out_max) {
+    switch (type) {
+    case datraw::scalar_type::uint8: {
+        auto const* ptr = reinterpret_cast<std::uint8_t const*>(data.data());
+        auto const [min, max] = std::minmax_element(ptr, ptr + data.size());
+        out_min = static_cast<float>(*min);
+        out_max = static_cast<float>(*max);
+        break;
+    }
+    case datraw::scalar_type::int16: {
+        auto const* ptr = reinterpret_cast<std::int16_t const*>(data.data());
+        auto const [min, max] = std::minmax_element(ptr, ptr + data.size() / 2);
+        out_min = static_cast<float>(*min);
+        out_max = static_cast<float>(*max);
+        break;
+    }
+    case datraw::scalar_type::uint16: {
+        auto const* ptr = reinterpret_cast<std::uint16_t const*>(data.data());
+        auto const [min, max] = std::minmax_element(ptr, ptr + data.size() / 2);
+        out_min = static_cast<float>(*min);
+        out_max = static_cast<float>(*max);
+        break;
+    }
+    case datraw::scalar_type::float32: {
+        auto const* ptr = reinterpret_cast<float const*>(data.data());
+        auto const [min, max] = std::minmax_element(ptr, ptr + data.size() / 4);
+        out_min = *min;
+        out_max = *max;
+        break;
+    }
+    case datraw::scalar_type::float64: {
+        auto const* ptr = reinterpret_cast<double const*>(data.data());
+        auto const [min, max] = std::minmax_element(ptr, ptr + data.size() / 8);
+        out_min = static_cast<float>(*min);
+        out_max = static_cast<float>(*max);
+        break;
+    }
+    default:
+        throw std::invalid_argument("Unsupported scalar type for range computation.");
+    }
+}
+
 ::ospray::cpp::Volume volume_benchmark::load_volume(const std::string& path, const frame_type frame) {
     log::instance().write_line(log_level::debug,
         "Loading volume data "
         "from {} ...",
         path);
     auto reader = reader_type::open(path);
+    this->_volume_info = reader.info();
 
     if (!reader.move_to(frame)) {
         throw std::invalid_argument("The given frame number does not exist.");
@@ -64,7 +107,7 @@ void volume_benchmark::optimise_order(configuration_set& inOutConfs) {
         throw std::invalid_argument("The number of per-voxel components of the "
                                     "given data set is not 1.");
     }
-        
+
     OSPDataType data_type = OSP_UNKNOWN;
     std::uint64_t element_size = 0;
     switch (reader.info().format()) {
@@ -80,10 +123,10 @@ void volume_benchmark::optimise_order(configuration_set& inOutConfs) {
         data_type = OSP_USHORT;
         element_size = 2;
         break;
-    case datraw::scalar_type::float16:
+    /*case datraw::scalar_type::float16:
         data_type = OSP_HALF;
         element_size = 2;
-        break;
+        break;*/
     case datraw::scalar_type::float32:
         data_type = OSP_FLOAT;
         element_size = 4;
@@ -100,9 +143,16 @@ void volume_benchmark::optimise_order(configuration_set& inOutConfs) {
 
     const auto data = reader.read_current();
 
-    rkcommon::math::vec3ul gridDimensions(
-        reader.info().resolution()[0], reader.info().resolution()[1], reader.info().resolution()[2]);
-    rkcommon::math::vec3f gridOrigin(reader.info().origin()[0], reader.info().origin()[1], reader.info().origin()[2]);
+    get_scalar_range(data, reader.info().format(), this->_volume_scalar_range[0], this->_volume_scalar_range[1]);
+
+    rkcommon::math::vec3ul gridDimensions(resolution[0], resolution[1], resolution[2]);
+    rkcommon::math::vec3f gridOrigin(0.f, 0.f, 0.f);
+    try {
+        rkcommon::math::vec3f gridOrigin(
+            reader.info().origin()[0], reader.info().origin()[1], reader.info().origin()[2]);
+    } catch (...) {
+        // Ignore any exceptions and use the default origin
+    }
     rkcommon::math::vec3f gridSpacing(
         reader.info().slice_thickness()[0], reader.info().slice_thickness()[1], reader.info().slice_thickness()[2]);
 
@@ -112,21 +162,25 @@ void volume_benchmark::optimise_order(configuration_set& inOutConfs) {
     volume.setParam("gridOrigin", gridOrigin);
     volume.setParam("gridSpacing", gridSpacing);
     volume.setParam("data", osp_data);
+    volume.setParam("cellCentered", true);
+    volume.setParam("background", 0.f);
     volume.commit();
-    
+
     return volume;
 }
 
-::ospray::cpp::TransferFunction volume_benchmark::load_brudervn_xfer_func(const std::string& path) {
+::ospray::cpp::TransferFunction volume_benchmark::load_brudervn_xfer_func(
+    const std::string& path, std::array<float, 2> const& scalar_range) {
     log::instance().write_line(log_level::debug,
         "Loading transfer function "
         "from {} ...",
         path);
     auto const data = trrojan::load_brudervn_xfer_func(path);
-    return load_xfer_func(data);
+    return load_xfer_func(data, scalar_range);
 }
 
-::ospray::cpp::TransferFunction volume_benchmark::load_xfer_func(const std::vector<std::uint8_t>& data) {
+::ospray::cpp::TransferFunction volume_benchmark::load_xfer_func(
+    const std::vector<std::uint8_t>& data, std::array<float, 2> const& scalar_range) {
     const auto cnt = std::div(static_cast<long>(data.size()), 4l);
 
     if (cnt.rem != 0) {
@@ -138,16 +192,13 @@ void volume_benchmark::optimise_order(configuration_set& inOutConfs) {
     std::vector<float> opacities;
     for (size_t i = 0; i < cnt.quot; ++i) {
         const auto idx = i * 4;
-        colors.emplace_back(
-            static_cast<float>(data[idx]) / 255.0f,
-            static_cast<float>(data[idx + 1]) / 255.0f,
-            static_cast<float>(data[idx + 2]) / 255.0f
-        );
+        colors.emplace_back(static_cast<float>(data[idx]) / 255.0f, static_cast<float>(data[idx + 1]) / 255.0f,
+            static_cast<float>(data[idx + 2]) / 255.0f);
         opacities.push_back(static_cast<float>(data[idx + 3]) / 255.0f);
     }
 
     ::ospray::cpp::TransferFunction xfer_func("piecewiseLinear");
-    xfer_func.setParam("value", rkcommon::math::range1f(0.f, 1.f));
+    xfer_func.setParam("value", rkcommon::math::range1f(scalar_range[0], scalar_range[1]));
     xfer_func.setParam("color", ::ospray::cpp::CopiedData(colors));
     xfer_func.setParam("opacity", ::ospray::cpp::CopiedData(opacities));
     xfer_func.commit();
@@ -155,23 +206,25 @@ void volume_benchmark::optimise_order(configuration_set& inOutConfs) {
     return xfer_func;
 }
 
-::ospray::cpp::TransferFunction volume_benchmark::load_xfer_func(const std::string& path) {
+::ospray::cpp::TransferFunction volume_benchmark::load_xfer_func(
+    const std::string& path, std::array<float, 2> const& scalar_range) {
     log::instance().write_line(log_level::debug,
         "Loading transfer function "
         "from {} ...",
         path);
     const auto data = read_binary_file(path);
-    return load_xfer_func(data);
+    return load_xfer_func(data, scalar_range);
 }
 
-::ospray::cpp::TransferFunction volume_benchmark::load_xfer_func(const configuration& config) {
+::ospray::cpp::TransferFunction volume_benchmark::load_xfer_func(
+    const configuration& config, std::array<float, 2> const& scalar_range) {
     try {
         auto path = config.get<std::string>(volume_configuration::factor_xfer_func);
 
         if (ends_with(path, std::string(".brudervn"))) {
-            return load_brudervn_xfer_func(path);
+            return load_brudervn_xfer_func(path, scalar_range);
         } else {
-            return load_xfer_func(path);
+            return load_xfer_func(path, scalar_range);
         }
 
     } catch (...) {
@@ -185,7 +238,7 @@ void volume_benchmark::optimise_order(configuration_set& inOutConfs) {
             data[i * 4 + 3] = static_cast<std::uint8_t>(i);
         }
 
-        return load_xfer_func(data);
+        return load_xfer_func(data, scalar_range);
     }
 }
 
@@ -206,7 +259,7 @@ result volume_benchmark::on_run(ospray::device& device, const configuration& con
 
     // load xfer function
     if (!_xfer_func) {
-        _xfer_func = load_xfer_func(cfg.xfer_func());
+        _xfer_func = load_xfer_func(config, _volume_scalar_range);
     }
 
     const auto volume_size = this->get_volume_resolution();

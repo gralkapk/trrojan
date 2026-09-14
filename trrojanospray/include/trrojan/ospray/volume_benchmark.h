@@ -19,12 +19,16 @@ public:
     void optimise_order(configuration_set& inOutConfs) override;
 
 protected:
-    static ::ospray::cpp::Volume load_volume(const std::string& path, const frame_type frame);
+    ::ospray::cpp::Volume load_volume(const std::string& path, const frame_type frame);
 
-    static ::ospray::cpp::TransferFunction load_brudervn_xfer_func(const std::string& path);
-    static ::ospray::cpp::TransferFunction load_xfer_func(const std::vector<std::uint8_t>& data);
-    static ::ospray::cpp::TransferFunction load_xfer_func(const std::string& path);
-    static ::ospray::cpp::TransferFunction load_xfer_func(const configuration& config);
+    static ::ospray::cpp::TransferFunction load_brudervn_xfer_func(
+        const std::string& path, std::array<float, 2> const& scalar_range);
+    static ::ospray::cpp::TransferFunction load_xfer_func(
+        const std::vector<std::uint8_t>& data, std::array<float, 2> const& scalar_range);
+    static ::ospray::cpp::TransferFunction load_xfer_func(
+        const std::string& path, std::array<float, 2> const& scalar_range);
+    static ::ospray::cpp::TransferFunction load_xfer_func(
+        const configuration& config, std::array<float, 2> const& scalar_range);
 
     void on_device_switch(device& device) override;
 
@@ -42,5 +46,6 @@ private:
     ::ospray::cpp::TransferFunction _xfer_func;
 
     std::array<glm::vec3, 2> _volume_bbox;
+    std::array<float, 2> _volume_scalar_range;
 };
 } // namespace trrojan::ospray
