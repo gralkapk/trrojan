@@ -2,6 +2,7 @@
 
 #include "trrojan/clipping.h"
 #include "trrojan/log.h"
+#include "trrojan/on_exit.h"
 
 #include "trrojan/ospray/camera.h"
 #include "trrojan/ospray/camera_light.h"
@@ -160,10 +161,18 @@ result sphere_benchmark::on_run(ospray::device& device, const configuration& con
     log::instance().write_line(
         log_level::debug, "Measuring CPU timings over {} iterations ...", cfg.counter_iterations());
     std::vector<float> cpu_times(cfg.counter_iterations());
-    bool done = false;
-    auto const powerUid = enter_power_scope(power_collector, done);
+    std::atomic_bool rtx_acquired{false};
+    auto evt_done = CreateEvent(nullptr, FALSE, FALSE, nullptr);
+    if (evt_done == NULL) {
+        throw std::system_error(GetLastError(), std::system_category());
+    }
+    on_exit([evt_done](void) { CloseHandle(evt_done); });
+    auto const powerUid = enter_power_scope(
+        power_collector, [&rtx_acquired]() { rtx_acquired.store(true, std::memory_order_release); },
+        [evt_done](const bool) { SetEvent(evt_done); });
     std::uint32_t actual_iterations = 0;
-    for (std::uint32_t i = 0; i < cfg.counter_iterations() && !done; ++i, ++actual_iterations) {
+    for (std::uint32_t i = 0; i < cfg.counter_iterations() && !rtx_acquired.load(std::memory_order_acquire);
+        ++i, ++actual_iterations) {
         auto frame_future = renderer.renderFrame(
             static_cast<OSPFrameBuffer>(*render_target()), static_cast<OSPCamera>(camera), world.handle());
         ospWait(frame_future);
@@ -192,6 +201,12 @@ result sphere_benchmark::on_run(ospray::device& device, const configuration& con
         std::chrono::duration_cast<std::chrono::milliseconds>(cpu_min_s).count(),
         std::chrono::duration_cast<std::chrono::milliseconds>(cpu_median_s).count(),
         std::chrono::duration_cast<std::chrono::milliseconds>(cpu_max_s).count()});
+
+    // Make sure that the download of the power data has finished before we
+    // continue to the next benchmark.
+    log::instance().write_line(log_level::debug, "Waiting for "
+                                                 "RTx sample to be downloaded.");
+    ::WaitForSingleObject(evt_done, INFINITE);
 
     return result;
 }

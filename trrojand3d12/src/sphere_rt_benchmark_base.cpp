@@ -3,6 +3,7 @@
 #include "trrojan/com_error_category.h"
 
 #include "trrojan/clipping.h"
+#include "trrojan/on_exit.h"
 
 #include "trrojan/d3d12/d3dx12.h"
 #include "trrojan/d3d12/measurement_context.h"
@@ -438,6 +439,7 @@ trrojan::result sphere_rt_benchmark_base::on_run(d3d12::device& device, const co
 
     gpu_timer::millis_type cpu_time;
     uint64_t powerUid = -1;
+    HANDLE evt_done = nullptr;
 
     // TODO TEST basic rendering command list
     {
@@ -580,7 +582,6 @@ trrojan::result sphere_rt_benchmark_base::on_run(d3d12::device& device, const co
             device.wait_for_gpu();
         }*/
 
-
         // Do prewarming and compute number of CPU iterations at the same time.
         log::instance().write_line(log_level::debug, "Prewarming ...");
         {
@@ -616,9 +617,16 @@ trrojan::result sphere_rt_benchmark_base::on_run(d3d12::device& device, const co
 
         // Do the GPU counter measurements using individual command lists.
         gpu_times.resize(cfg.gpu_counter_iterations());
-        bool done = false;
-        powerUid = enter_power_scope(power_collector, done);
-        for (std::uint32_t i = 0; i < cfg.gpu_counter_iterations() && !done; ++i) {
+        std::atomic_bool rtx_acquired{false};
+        evt_done = CreateEvent(nullptr, FALSE, FALSE, nullptr);
+        if (evt_done == NULL) {
+            throw std::system_error(GetLastError(), std::system_category());
+        }
+        on_exit([evt_done](void) { CloseHandle(evt_done); });
+        powerUid = enter_power_scope(
+            power_collector, [&rtx_acquired]() { rtx_acquired.store(true, std::memory_order_release); },
+            [evt_done](const bool) { SetEvent(evt_done); });
+        for (std::uint32_t i = 0; i < cfg.gpu_counter_iterations() && !rtx_acquired.load(std::memory_order_acquire); ++i) {
             log::instance().write_line(log_level::debug,
                 "GPU counter measurement "
                 "#{}.",
@@ -706,6 +714,12 @@ trrojan::result sphere_rt_benchmark_base::on_run(d3d12::device& device, const co
     // Output the results.
     retval->add({this->name(), powerUid, this->data_.spheres(), this->data_.extents(), gpu_times.front(), gpu_median,
         gpu_times.back(), mctx.cpu_iterations, cpu_time, static_cast<double>(cpu_time) / mctx.cpu_iterations});
+
+    // Make sure that the download of the power data has finished before we
+    // continue to the next benchmark.
+    log::instance().write_line(log_level::debug, "Waiting for "
+                                                 "RTx sample to be downloaded.");
+    ::WaitForSingleObject(evt_done, INFINITE);
 
     return retval;
 }
