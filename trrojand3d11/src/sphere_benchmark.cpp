@@ -22,6 +22,7 @@
 #include "trrojan/factor_range.h"
 #include "trrojan/io.h"
 #include "trrojan/log.h"
+#include "trrojan/on_exit.h"
 #include "trrojan/mmpld_reader.h"
 #include "trrojan/result.h"
 #include "trrojan/system_factors.h"
@@ -560,10 +561,31 @@ trrojan::result trrojan::d3d11::sphere_benchmark::on_run(d3d11::device& device,
     // Do the wall clock measurement.
     log::instance().write_line(log_level::debug, "Measuring wall clock "
         "timings over {} iterations ...", cntCpuIterations);
-    const auto powerUid = benchmark_base::enter_power_scope(powerCollector);
+    std::atomic<bool> rtx_acquired(false);
+    auto rtx_done = ::CreateEvent(nullptr, FALSE, FALSE, nullptr);
+    if (rtx_done == NULL) {
+        throw std::system_error(::GetLastError(), std::system_category());
+    }
+    on_exit([rtx_done](void) { ::CloseHandle(rtx_done); });
+    const auto powerUid = benchmark_base::enter_power_scope(powerCollector,
+        [&rtx_acquired](void) {
+            log::instance().write_line(log_level::information, "RTx sample "
+                "acquired.");
+            //rtx_acquired.store(true, std::memory_order_release);
+        },
+        [rtx_done, &rtx_acquired](const bool) {
+            log::instance().write_line(log_level::information, "RTx sample "
+                "downloaded.");
+            rtx_acquired.store(true, std::memory_order_release);
+            ::SetEvent(rtx_done);
+        });
 
     cpuTimer.start();
-    for (std::uint32_t i = 0; i < cntCpuIterations; ++i) {
+    std::uint32_t cpu_iterations = 0;
+    assert(cntCpuIterations > 0);
+    for (; (cpu_iterations < cntCpuIterations)
+            /*|| !rtx_acquired.load(std::memory_order_acquire)*/;
+            ++cpu_iterations) {
         this->clear_target();
         if (isInstanced) {
             ctx->DrawInstanced(cntPrimitives, cntInstances, 0, 0);
@@ -607,10 +629,14 @@ trrojan::result trrojan::d3d11::sphere_benchmark::on_run(d3d11::device& device,
         gpuTimes.front(),
         gpuMedian,
         gpuTimes.back(),
-        cntCpuIterations,
+        cpu_iterations,
         cpuTime,
-        static_cast<double>(cpuTime) / cntCpuIterations
+        static_cast<double>(cpuTime) / cpu_iterations
         });
+
+    log::instance().write_line(log_level::debug, "Waiting for "
+        "RTx sample to be downloaded before leaving the benchmark.");
+    ::WaitForSingleObject(rtx_done, INFINITE);
 
     return retval;
 }

@@ -102,10 +102,17 @@ int main(const int argc, const char **argv) {
                     }
                 }
 
+                const auto record_voltage = trrojan::contains_switch(
+                    "--record-voltage", cmdLine.begin(), cmdLine.end());
+                const auto record_current = trrojan::contains_switch(
+                    "--record-current", cmdLine.begin(), cmdLine.end());
+
                 power_collector->start(
                     *it,
                     std::chrono::milliseconds(10),
-                    dump_location);
+                    dump_location,
+                    record_voltage,
+                    record_current);
             }
         }
 #endif /* defined(TRROJAN_WITH_POWER_OVERWHELMING) */
@@ -176,6 +183,12 @@ int main(const int argc, const char **argv) {
                 exe.trroll(*it, *output, coolDown, continue_at,
                     power_collector, exclude_devices);
             }
+        }
+
+        // Actively stop the power collector to force an orderly shutdown. This
+        // ensures that the power log is properly finalised.
+        if (power_collector != nullptr) {
+            power_collector->stop();
         }
 
         return 0;

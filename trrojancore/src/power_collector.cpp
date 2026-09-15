@@ -15,6 +15,8 @@
 #include <visus/pwrowg/hmc8015_instrument.h>
 #include <visus/pwrowg/marker_configuration.h>
 #include <visus/pwrowg/msr_configuration.h>
+#include <visus/pwrowg/parquet_sink.h>
+#include <visus/pwrowg/pwog_sink.h>
 #include <visus/pwrowg/rtx_configuration.h>
 #include <visus/pwrowg/rtx_sensor_trigger.h>
 #include <visus/pwrowg/sensor_array.h>
@@ -34,7 +36,15 @@
 namespace trrojan {
 namespace detail {
 
+#if defined(USE_PWOG_SINK)
+    typedef visus::pwrowg::thread_local_sink<visus::pwrowg::pwog_sink>
+        pwr_sink;
+#elif defined(USE_PARQUET_SINK)
+    typedef visus::pwrowg::thread_local_sink<visus::pwrowg::parquet_sink>
+        pwr_sink;
+#else /* (defined(USE_PARQUET_SINK) */
     typedef visus::pwrowg::thread_local_sink<power_compatibility_sink> pwr_sink;
+#endif /* (defined(USE_PARQUET_SINK) */
 
     /// <summary>
     /// Holds the Power-Overwhelming-related data we want to hide from the
@@ -167,14 +177,16 @@ trrojan::power_collector::~power_collector(void) {
  * trrojan::power_collector::acquire_rtx
  */
 bool trrojan::power_collector::acquire_rtx(
-        const std::function<void(bool)>& cb) {
+        const std::function<void(void)>& acquired,
+        const std::function<void(bool)>& done) {
     if ((this->_details == nullptr) || !this->_details->rtx_trigger) {
         return false;
     }
 
     return this->_details->rtx_trigger.acquire(
-        [cb](void) { cb(true); },
-        [cb](const std::exception_ptr) { cb(false); return true; });
+        [acquired](void) { acquired(); },
+        [done](void) { done(true); },
+        [done](const std::exception_ptr) { done(false); return true; });
 }
 
 
@@ -194,9 +206,11 @@ std::uint64_t trrojan::power_collector::enter_scope(void) {
     unsigned int retval = 0;
     this->_details->markers->emit(&retval);
 
+#if (!defined(USE_PARQUET_SINK) && !defined(USE_PWOG_SINK))
     if (this->_details->sink) {
         this->_details->sink->power_uid(retval);
     }
+#endif /* (!defined(USE_PARQUET_SINK) && !defined(USE_PWOG_SINK)) */
 
     return retval;
 }
@@ -231,7 +245,9 @@ void trrojan::power_collector::sync_time(void) {
 void trrojan::power_collector::start(
         const std::string& file,
         const interval_type sampling_interval,
-        const std::string& sensor_dump) {
+        const std::string& sensor_dump,
+        const bool record_voltage,
+        const bool record_current) {
     using namespace visus::pwrowg;
     assert(this->_details != nullptr);
 
@@ -242,7 +258,18 @@ void trrojan::power_collector::start(
 
     // Prepare the output sink.
     this->_file = file;
+#if defined(USE_PWOG_SINK)
     this->_details->sink.reset(new detail::pwr_sink(1024, this->_file.c_str()));
+#elif defined(USE_PARQUET_SINK)
+    {
+        parquet_configuration c(this->_file.c_str());
+        c.identity(parquet_identity_column::label);
+        c.raw(false);
+        this->_details->sink.reset(new detail::pwr_sink(1024, c));
+    }
+#else /* defined(USE_PARQUET_SINK) */
+    this->_details->sink.reset(new detail::pwr_sink(1024, this->_file.c_str()));
+#endif /* defined(USE_PARQUET_SINK) */
 
     // Configure the sensors.
     sensor_array_configuration config;
@@ -273,9 +300,31 @@ void trrojan::power_collector::start(
         config.exclude<rtx_configuration>();
     }
 
-    this->_details->sensors = visus::pwrowg::sensor_array::for_matches(
-        std::move(config), visus::pwrowg::is_any_of<
-        visus::pwrowg::is_power_sensor, visus::pwrowg::is_marker_sensor>);
+    if (record_voltage && record_current) {
+        this->_details->sensors = visus::pwrowg::sensor_array::for_matches(
+            std::move(config), visus::pwrowg::is_any_of<
+                visus::pwrowg::is_power_sensor,
+                visus::pwrowg::is_marker_sensor,
+                visus::pwrowg::is_voltage_sensor,
+                visus::pwrowg::is_current_sensor>);
+    } else if (record_voltage) {
+        this->_details->sensors = visus::pwrowg::sensor_array::for_matches(
+            std::move(config), visus::pwrowg::is_any_of<
+                visus::pwrowg::is_power_sensor,
+                visus::pwrowg::is_marker_sensor,
+                visus::pwrowg::is_voltage_sensor>);
+    } else if (record_current) {
+        this->_details->sensors = visus::pwrowg::sensor_array::for_matches(
+            std::move(config), visus::pwrowg::is_any_of<
+                visus::pwrowg::is_power_sensor,
+                visus::pwrowg::is_marker_sensor,
+                visus::pwrowg::is_current_sensor>);
+    } else {
+        this->_details->sensors = visus::pwrowg::sensor_array::for_matches(
+            std::move(config), visus::pwrowg::is_any_of<
+                visus::pwrowg::is_power_sensor,
+                visus::pwrowg::is_marker_sensor>);
+    }
 
     if (!sensor_dump.empty()) {
         log::instance().write_line(log_level::verbose, "Logging power sensors "
@@ -302,11 +351,16 @@ void trrojan::power_collector::start(
  */
 void trrojan::power_collector::stop(void) {
     assert(this->_details != nullptr);
+    log::instance().write_line(log_level::information, "Stopping power data "
+        "collection.");
 
     // Stop sampling power data.
     if (this->_details->sensors) {
         this->_details->sensors.stop();
     }
+
+    // Finalise the output file.
+    this->_details->sink.reset();
 
     // Dispose the array, which serves as guard whether we are running or not.
     this->_details->sensors = visus::pwrowg::sensor_array();
@@ -322,10 +376,6 @@ void trrojan::power_collector::stop(void) {
             log::instance().write_line(ex);
         }
     }
-#endif
-
-    // Finalise the output file.
-    this->_details->sink.reset();
 }
 
 #endif /* defined(TRROJAN_WITH_POWER_OVERWHELMING) */
