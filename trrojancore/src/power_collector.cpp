@@ -37,65 +37,58 @@ namespace trrojan {
 namespace detail {
 
 #if defined(USE_PWOG_SINK)
-    typedef visus::pwrowg::thread_local_sink<visus::pwrowg::pwog_sink>
-        pwr_sink;
+typedef visus::pwrowg::thread_local_sink<visus::pwrowg::pwog_sink> pwr_sink;
 #elif defined(USE_PARQUET_SINK)
-    typedef visus::pwrowg::thread_local_sink<visus::pwrowg::parquet_sink>
-        pwr_sink;
-#else /* (defined(USE_PARQUET_SINK) */
-    typedef visus::pwrowg::thread_local_sink<power_compatibility_sink> pwr_sink;
+typedef visus::pwrowg::thread_local_sink<visus::pwrowg::parquet_sink> pwr_sink;
+#else  /* (defined(USE_PARQUET_SINK) */
+typedef visus::pwrowg::thread_local_sink<power_compatibility_sink> pwr_sink;
 #endif /* (defined(USE_PARQUET_SINK) */
 
-    /// <summary>
-    /// Holds the Power-Overwhelming-related data we want to hide from the
-    /// header.
-    /// </summary>
-    struct power_details final {
-#if defined(POWER_OVERWHELMING_WITH_VISA)
-        std::vector<visus::pwrowg::hmc8015_instrument> hmc8015;
-#endif
-        visus::pwrowg::marker_controller *markers { };
-        visus::pwrowg::rtx_sensor_trigger rtx_trigger;
-        visus::pwrowg::tinkerforge_controller *tinkerforge { };
-        std::unique_ptr<pwr_sink> sink;
-        visus::pwrowg::sensor_array sensors;
-    };
+/// <summary>
+/// Holds the Power-Overwhelming-related data we want to hide from the
+/// header.
+/// </summary>
+struct power_details final {
+    std::vector<visus::pwrowg::hmc8015_instrument> hmc8015;
+    visus::pwrowg::marker_controller* markers{};
+    visus::pwrowg::rtx_sensor_trigger rtx_trigger;
+    visus::pwrowg::tinkerforge_controller* tinkerforge{};
+    std::unique_ptr<pwr_sink> sink;
+    visus::pwrowg::sensor_array sensors;
+};
 
-#if defined(POWER_OVERWHELMING_WITH_VISA)
-    /// <summary>
-    /// Starts recording to a new log file on the HMC8015.
-    /// </summary>
-    void start_hmc8015_sensor(visus::pwrowg::hmc8015_instrument& sensor) {
-        // Unfortunately, the HMC8015 only supports 8.3 file names, so we try
-        // to build a unique one ...
-        std::string file_name;
-        {
-            std::stringstream file_name_builder;
+/// <summary>
+/// Starts recording to a new log file on the HMC8015.
+/// </summary>
+void start_hmc8015_sensor(visus::pwrowg::hmc8015_instrument& sensor) {
+    // Unfortunately, the HMC8015 only supports 8.3 file names, so we try
+    // to build a unique one ...
+    std::string file_name;
+    {
+        std::stringstream file_name_builder;
 
-            auto timestamp = std::chrono::high_resolution_clock::now()
-                .time_since_epoch().count();
-            timestamp = timestamp & UINT_MAX ^ (timestamp >> 32);
-            file_name_builder << std::hex
-                << static_cast<std::uint32_t>(timestamp)
-                << ".csv";
-            file_name = file_name_builder.str();
-        }
-
-        sensor.log_file(file_name.c_str(), false, true);
-
-        {
-            std::vector<char> actual_name;
-            actual_name.resize(sensor.log_file(nullptr, actual_name.size()));
-            sensor.log_file(actual_name.data(), actual_name.size());
-
-            log::instance().write_line(log_level::verbose, "HMC8015 is logging "
-                "to \"{0}\" (\"{1}\").", file_name, actual_name.data());
-        }
-
-        sensor.log(true);
-        assert(sensor.is_log());
+        auto timestamp = std::chrono::high_resolution_clock::now().time_since_epoch().count();
+        timestamp = timestamp & UINT_MAX ^ (timestamp >> 32);
+        file_name_builder << std::hex << static_cast<std::uint32_t>(timestamp) << ".csv";
+        file_name = file_name_builder.str();
     }
-#endif
+
+    sensor.log_file(file_name.c_str(), false, true);
+
+    {
+        std::vector<char> actual_name;
+        actual_name.resize(sensor.log_file(nullptr, actual_name.size()));
+        sensor.log_file(actual_name.data(), actual_name.size());
+
+        log::instance().write_line(log_level::verbose,
+            "HMC8015 is logging "
+            "to \"{0}\" (\"{1}\").",
+            file_name, actual_name.data());
+    }
+
+    sensor.log(true);
+    assert(sensor.is_log());
+}
 
 } /* namespace detail */
 } /* namespace trrojan */
@@ -105,8 +98,7 @@ namespace detail {
 /*
  * trrojan::power_collector::get
  */
-trrojan::power_collector::pointer trrojan::power_collector::get(
-        const configuration& configuration) {
+trrojan::power_collector::pointer trrojan::power_collector::get(const configuration& configuration) {
 #if defined(TRROJAN_WITH_POWER_OVERWHELMING)
     auto it = configuration.find(power_collector::factor_name);
     if (it != configuration.end()) {
@@ -127,18 +119,16 @@ const char trrojan::power_collector::delimiter = ';';
 /*
  * trrojan::power_collector::factor_name
  */
-const char *trrojan::power_collector::factor_name = "powerlog";
+const char* trrojan::power_collector::factor_name = "powerlog";
 
 
 #if defined(TRROJAN_WITH_POWER_OVERWHELMING)
 /*
  * trrojan::power_collector::power_collector
  */
-trrojan::power_collector::power_collector(void)
-        : _details(std::make_unique<detail::power_details>()) {
+trrojan::power_collector::power_collector(void) : _details(std::make_unique<detail::power_details>()) {
     assert(this->_details != nullptr);
 
-#if defined(POWER_OVERWHELMING_WITH_VISA)
     // For backward compatibility, we set up the HMC 8015 separately.
     try {
         this->_details->hmc8015.resize(visus::pwrowg::hmc8015_instrument::for_all(nullptr, 0));
@@ -161,7 +151,6 @@ trrojan::power_collector::power_collector(void)
     } catch (std::exception& ex) {
         log::instance().write_line(ex);
     }
-#endif
 }
 
 
@@ -177,16 +166,16 @@ trrojan::power_collector::~power_collector(void) {
  * trrojan::power_collector::acquire_rtx
  */
 bool trrojan::power_collector::acquire_rtx(
-        const std::function<void(void)>& acquired,
-        const std::function<void(bool)>& done) {
+    const std::function<void(void)>& acquired, const std::function<void(bool)>& done) {
     if ((this->_details == nullptr) || !this->_details->rtx_trigger) {
         return false;
     }
 
-    return this->_details->rtx_trigger.acquire(
-        [acquired](void) { acquired(); },
-        [done](void) { done(true); },
-        [done](const std::exception_ptr) { done(false); return true; });
+    return this->_details->rtx_trigger.acquire([acquired](void) { acquired(); }, [done](void) { done(true); },
+        [done](const std::exception_ptr) {
+            done(false);
+            return true;
+        });
 }
 
 
@@ -242,18 +231,14 @@ void trrojan::power_collector::sync_time(void) {
 /*
  * trrojan::power_collector::start
  */
-void trrojan::power_collector::start(
-        const std::string& file,
-        const interval_type sampling_interval,
-        const std::string& sensor_dump,
-        const bool record_voltage,
-        const bool record_current) {
+void trrojan::power_collector::start(const std::string& file, const interval_type sampling_interval,
+    const std::string& sensor_dump, const bool record_voltage, const bool record_current) {
     using namespace visus::pwrowg;
     assert(this->_details != nullptr);
 
     if (this->_details->sensors) {
         throw std::runtime_error("The sampler thread of the power_collector is "
-            "already running and cannot be restarted.");
+                                 "already running and cannot be restarted.");
     }
 
     // Prepare the output sink.
@@ -267,7 +252,7 @@ void trrojan::power_collector::start(
         c.raw(false);
         this->_details->sink.reset(new detail::pwr_sink(1024, c));
     }
-#else /* defined(USE_PARQUET_SINK) */
+#else  /* defined(USE_PARQUET_SINK) */
     this->_details->sink.reset(new detail::pwr_sink(1024, this->_file.c_str()));
 #endif /* defined(USE_PARQUET_SINK) */
 
@@ -277,69 +262,57 @@ void trrojan::power_collector::start(
         .sample_every(sampling_interval)
         .deliver_to(detail::pwr_sink::sample_callback)
         .deliver_context(this->_details->sink.get())
-        .configure<tinkerforge_configuration>(
-                [](tinkerforge_configuration& c) {
+        .configure<tinkerforge_configuration>([](tinkerforge_configuration& c) {
             typedef visus::pwrowg::tinkerforge_sample_averaging avg;
             typedef visus::pwrowg::tinkerforge_conversion_time conv;
             c.averaging(avg::average_of_4);
             c.current_conversion_time(conv::milliseconds_2_116);
             c.voltage_conversion_time(conv::milliseconds_2_116);
         })
-        .configure<msr_configuration>([](msr_configuration& c) {
-            c.first_core(true);
-        });
+        .configure<msr_configuration>([](msr_configuration& c) { c.first_core(true); });
 
     // Enable the oscilloscope if a configuration was provided.
     if (!this->_rtx_config.empty()) {
-        config.configure<rtx_configuration>(
-            [this](rtx_configuration& c) {
-                c = rtx_configuration::load(this->_rtx_config.c_str());
-                this->_details->rtx_trigger = c.trigger();
-            });
+        config.configure<rtx_configuration>([this](rtx_configuration& c) {
+            c = rtx_configuration::load(this->_rtx_config.c_str());
+            this->_details->rtx_trigger = c.trigger();
+        });
     } else {
         config.exclude<rtx_configuration>();
     }
 
     if (record_voltage && record_current) {
         this->_details->sensors = visus::pwrowg::sensor_array::for_matches(
-            std::move(config), visus::pwrowg::is_any_of<
-                visus::pwrowg::is_power_sensor,
-                visus::pwrowg::is_marker_sensor,
-                visus::pwrowg::is_voltage_sensor,
-                visus::pwrowg::is_current_sensor>);
+            std::move(config), visus::pwrowg::is_any_of<visus::pwrowg::is_power_sensor, visus::pwrowg::is_marker_sensor,
+                                   visus::pwrowg::is_voltage_sensor, visus::pwrowg::is_current_sensor>);
     } else if (record_voltage) {
         this->_details->sensors = visus::pwrowg::sensor_array::for_matches(
-            std::move(config), visus::pwrowg::is_any_of<
-                visus::pwrowg::is_power_sensor,
-                visus::pwrowg::is_marker_sensor,
-                visus::pwrowg::is_voltage_sensor>);
+            std::move(config), visus::pwrowg::is_any_of<visus::pwrowg::is_power_sensor, visus::pwrowg::is_marker_sensor,
+                                   visus::pwrowg::is_voltage_sensor>);
     } else if (record_current) {
         this->_details->sensors = visus::pwrowg::sensor_array::for_matches(
-            std::move(config), visus::pwrowg::is_any_of<
-                visus::pwrowg::is_power_sensor,
-                visus::pwrowg::is_marker_sensor,
-                visus::pwrowg::is_current_sensor>);
+            std::move(config), visus::pwrowg::is_any_of<visus::pwrowg::is_power_sensor, visus::pwrowg::is_marker_sensor,
+                                   visus::pwrowg::is_current_sensor>);
     } else {
-        this->_details->sensors = visus::pwrowg::sensor_array::for_matches(
-            std::move(config), visus::pwrowg::is_any_of<
-                visus::pwrowg::is_power_sensor,
-                visus::pwrowg::is_marker_sensor>);
+        this->_details->sensors = visus::pwrowg::sensor_array::for_matches(std::move(config),
+            visus::pwrowg::is_any_of<visus::pwrowg::is_power_sensor, visus::pwrowg::is_marker_sensor>);
     }
 
     if (!sensor_dump.empty()) {
-        log::instance().write_line(log_level::verbose, "Logging power sensors "
-            " to \"{0}\".", sensor_dump.c_str());
+        log::instance().write_line(log_level::verbose,
+            "Logging power sensors "
+            " to \"{0}\".",
+            sensor_dump.c_str());
         dump_sensors(this->_details->sensors, sensor_dump);
     }
 
-    this->_details->markers = this->_details->sensors.controller<
-        visus::pwrowg::marker_configuration>();
-    this->_details->tinkerforge = this->_details->sensors.controller<
-        visus::pwrowg::tinkerforge_configuration>();
+    this->_details->markers = this->_details->sensors.controller<visus::pwrowg::marker_configuration>();
+    this->_details->tinkerforge = this->_details->sensors.controller<visus::pwrowg::tinkerforge_configuration>();
 
-    log::instance().write_line(log_level::information, "Logging power usage to "
-        "\"{0}\" at an {1} ms interval.", this->_file.c_str(),
-        sampling_interval.count());
+    log::instance().write_line(log_level::information,
+        "Logging power usage to "
+        "\"{0}\" at an {1} ms interval.",
+        this->_file.c_str(), sampling_interval.count());
     this->_details->sensors.start();
     assert(this->_details->markers != nullptr);
     this->_details->markers->emit();
@@ -352,7 +325,7 @@ void trrojan::power_collector::start(
 void trrojan::power_collector::stop(void) {
     assert(this->_details != nullptr);
     log::instance().write_line(log_level::information, "Stopping power data "
-        "collection.");
+                                                       "collection.");
 
     // Stop sampling power data.
     if (this->_details->sensors) {
@@ -365,7 +338,6 @@ void trrojan::power_collector::stop(void) {
     // Dispose the array, which serves as guard whether we are running or not.
     this->_details->sensors = visus::pwrowg::sensor_array();
 
-#if defined(POWER_OVERWHELMING_WITH_VISA)
     // Stop logging on HMC.
     for (auto& s : this->_details->hmc8015) {
         try {
