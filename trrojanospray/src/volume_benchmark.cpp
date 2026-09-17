@@ -86,6 +86,59 @@ void get_scalar_range(std::vector<std::uint8_t> const& data, datraw::scalar_type
     }
 }
 
+std::vector<float> normalize_volume_data(std::vector<std::uint8_t> const& data, datraw::scalar_type type, float min_scalar, float max_scalar) {
+    std::vector<float> normalized_data;
+    normalized_data.reserve(data.size() / sizeof(float));
+
+    switch (type) {
+    case datraw::scalar_type::uint8: {
+        auto const* ptr = reinterpret_cast<std::uint8_t const*>(data.data());
+        normalized_data.reserve(data.size());
+        std::transform(
+            ptr, ptr + data.size(), std::back_inserter(normalized_data), [min_scalar, max_scalar](std::uint8_t value) {
+                return (static_cast<float>(value) - min_scalar) / (max_scalar - min_scalar);
+            });
+        break;
+    }
+    case datraw::scalar_type::int16: {
+        auto const* ptr = reinterpret_cast<std::int16_t const*>(data.data());
+        normalized_data.reserve(data.size() / 2);
+        std::transform(ptr, ptr + data.size() / 2, std::back_inserter(normalized_data),
+            [min_scalar, max_scalar](
+                std::int16_t value) { return (static_cast<float>(value) - min_scalar) / (max_scalar - min_scalar); });
+        break;
+    }
+    case datraw::scalar_type::uint16: {
+        auto const* ptr = reinterpret_cast<std::uint16_t const*>(data.data());
+        normalized_data.reserve(data.size() / 2);
+        std::transform(ptr, ptr + data.size() / 2, std::back_inserter(normalized_data),
+            [min_scalar, max_scalar](
+                std::uint16_t value) { return (static_cast<float>(value) - min_scalar) / (max_scalar - min_scalar); });
+        break;
+    }
+    case datraw::scalar_type::float32: {
+        auto const* ptr = reinterpret_cast<float const*>(data.data());
+        normalized_data.reserve(data.size() / 4);
+        std::transform(ptr, ptr + data.size() / 4, std::back_inserter(normalized_data),
+            [min_scalar, max_scalar](float value) { return (value - min_scalar) / (max_scalar - min_scalar); });
+        break;
+    }
+    case datraw::scalar_type::float64: {
+        auto const* ptr = reinterpret_cast<double const*>(data.data());
+        normalized_data.reserve(data.size() / 8);
+        std::transform(
+            ptr, ptr + data.size() / 8, std::back_inserter(normalized_data), [min_scalar, max_scalar](double value) {
+                return (static_cast<float>(value) - min_scalar) / (max_scalar - min_scalar);
+            });
+        break;
+    }
+    default:
+        throw std::invalid_argument("Unsupported scalar type for range computation.");
+    }
+
+    return normalized_data;
+}
+
 ::ospray::cpp::Volume volume_benchmark::load_volume(const std::string& path, const frame_type frame) {
     log::instance().write_line(log_level::debug,
         "Loading volume data "
@@ -157,14 +210,16 @@ void get_scalar_range(std::vector<std::uint8_t> const& data, datraw::scalar_type
     rkcommon::math::vec3f gridSpacing(
         reader.info().slice_thickness()[0], reader.info().slice_thickness()[1], reader.info().slice_thickness()[2]);
 
-    auto osp_data = ::ospray::cpp::CopiedData(data.data(), data_type, gridDimensions);
+    auto osp_data = ::ospray::cpp::CopiedData(reinterpret_cast<const char*>(data.data()), data_type, gridDimensions);
 
     ::ospray::cpp::Volume volume("structuredRegular");
     volume.setParam("gridOrigin", gridOrigin);
     volume.setParam("gridSpacing", gridSpacing);
     volume.setParam("data", osp_data);
-    volume.setParam("cellCentered", true);
-    volume.setParam("background", 0.f);
+    volume.setParam("cellCentered", false);
+    volume.setParam("filter", OSP_VOLUME_FILTER_CUBIC);
+    volume.setParam("gradientFilter", OSP_VOLUME_FILTER_CUBIC);
+    //volume.setParam("background", 0.f);
     volume.commit();
 
     return volume;
@@ -193,13 +248,19 @@ void get_scalar_range(std::vector<std::uint8_t> const& data, datraw::scalar_type
     std::vector<float> opacities;
     for (size_t i = 0; i < cnt.quot; ++i) {
         const auto idx = i * 4;
-        colors.emplace_back(static_cast<float>(data[idx]) / 255.0f, static_cast<float>(data[idx + 1]) / 255.0f,
-            static_cast<float>(data[idx + 2]) / 255.0f);
-        opacities.push_back(static_cast<float>(data[idx + 3]) / 255.0f);
+        colors.emplace_back(static_cast<float>(data[idx]) / 255.f, static_cast<float>(data[idx + 1]) / 255.f,
+            static_cast<float>(data[idx + 2]) / 255.f);
+        opacities.push_back((static_cast<float>(data[idx + 3]) / 255.f)*scalar_range[1]); // TODO not entirely correct as scalar_range[0] is not considered
+        //colors.back() = colors.back() * (1.0f - opacities.back());
     }
+    /*using rkcommon::math::vec3f;
+    std::vector<vec3f> colors = {vec3f(1.f, 0.f, 0.f), vec3f(0.f, 1.f, 0.f), vec3f(0.f, 1.f, 1.f), vec3f(1.f, 1.f, 0.f),
+        vec3f(1.f, 1.f, 1.f), vec3f(1.f, 0.f, 1.f)};
+    std::vector<float> opacities = {1.f, 1.f};*/
 
     ::ospray::cpp::TransferFunction xfer_func("piecewiseLinear");
     xfer_func.setParam("value", rkcommon::math::range1f(scalar_range[0], scalar_range[1]));
+    //xfer_func.setParam("value", rkcommon::math::range1f(0.f, 1.f));
     xfer_func.setParam("color", ::ospray::cpp::CopiedData(colors));
     xfer_func.setParam("opacity", ::ospray::cpp::CopiedData(opacities));
     xfer_func.commit();
@@ -269,14 +330,8 @@ result volume_benchmark::on_run(ospray::device& device, const configuration& con
 
     ::ospray::cpp::VolumetricModel volume_model(_volume);
     volume_model.setParam("transferFunction", _xfer_func);
+    volume_model.setParam("densityScale", 1.0f);
     volume_model.commit();
-
-    ::ospray::cpp::Group volume_group;
-    volume_group.setParam("volume", ::ospray::cpp::CopiedData(&volume_model, OSP_VOLUMETRIC_MODEL, 1));
-    volume_group.commit();
-
-    ::ospray::cpp::Instance volume_instance(volume_group);
-    volume_instance.commit();
 
     std::vector<::ospray::cpp::Light> lights;
     {
@@ -292,9 +347,17 @@ result volume_benchmark::on_run(ospray::device& device, const configuration& con
         lights.push_back(light);
     }
 
+    ::ospray::cpp::Group volume_group;
+    volume_group.setParam("volume", ::ospray::cpp::CopiedData(&volume_model, OSP_VOLUMETRIC_MODEL, 1));
+    volume_group.setParam("light", ::ospray::cpp::CopiedData(lights.data(), OSP_LIGHT, lights.size()));
+    volume_group.commit();
+
+    ::ospray::cpp::Instance volume_instance(volume_group);
+    volume_instance.commit();
+
     ::ospray::cpp::World world;
     world.setParam("instance", ::ospray::cpp::CopiedData(&volume_instance, OSP_INSTANCE, 1));
-    world.setParam("light", ::ospray::cpp::CopiedData(lights.data(), OSP_LIGHT, lights.size()));
+    //world.setParam("light", ::ospray::cpp::CopiedData(lights.data(), OSP_LIGHT, lights.size()));
     world.commit();
 
     // setup renderer
