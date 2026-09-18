@@ -86,7 +86,8 @@ void get_scalar_range(std::vector<std::uint8_t> const& data, datraw::scalar_type
     }
 }
 
-std::vector<float> normalize_volume_data(std::vector<std::uint8_t> const& data, datraw::scalar_type type, float min_scalar, float max_scalar) {
+std::vector<float> normalize_volume_data(
+    std::vector<std::uint8_t> const& data, datraw::scalar_type type, float min_scalar, float max_scalar) {
     std::vector<float> normalized_data;
     normalized_data.reserve(data.size() / sizeof(float));
 
@@ -200,15 +201,22 @@ std::vector<float> normalize_volume_data(std::vector<std::uint8_t> const& data, 
     get_scalar_range(data, reader.info().format(), this->_volume_scalar_range[0], this->_volume_scalar_range[1]);
 
     rkcommon::math::vec3ul gridDimensions(resolution[0], resolution[1], resolution[2]);
-    rkcommon::math::vec3f gridOrigin(0.f, 0.f, 0.f);
-    try {
-        rkcommon::math::vec3f gridOrigin(
-            reader.info().origin()[0], reader.info().origin()[1], reader.info().origin()[2]);
-    } catch (...) {
-        // Ignore any exceptions and use the default origin
-    }
+    //rkcommon::math::vec3f gridOrigin(0.f, 0.f, 0.f);
+    //try {
+    //    rkcommon::math::vec3f gridOrigin(
+    //        reader.info().origin()[0], reader.info().origin()[1], reader.info().origin()[2]);
+    //} catch (...) {
+    //    // Ignore any exceptions and use the default origin
+    //}
     rkcommon::math::vec3f gridSpacing(
         reader.info().slice_thickness()[0], reader.info().slice_thickness()[1], reader.info().slice_thickness()[2]);
+
+    /*auto normalized_grid_size = gridSpacing / rkcommon::math::vec3f(gridDimensions);
+    auto gridOrigin = rkcommon::math::vec3f(-(normalized_grid_size / 2.f));
+    gridSpacing = rkcommon::math::vec3f(1.0f / rkcommon::math::vec3f(gridDimensions));*/
+
+    auto grid_size = gridSpacing * rkcommon::math::vec3f(gridDimensions);
+    auto gridOrigin = rkcommon::math::vec3f(-(grid_size / 2.f));
 
     auto osp_data = ::ospray::cpp::CopiedData(reinterpret_cast<const char*>(data.data()), data_type, gridDimensions);
 
@@ -250,7 +258,7 @@ std::vector<float> normalize_volume_data(std::vector<std::uint8_t> const& data, 
         const auto idx = i * 4;
         colors.emplace_back(static_cast<float>(data[idx]) / 255.f, static_cast<float>(data[idx + 1]) / 255.f,
             static_cast<float>(data[idx + 2]) / 255.f);
-        opacities.push_back((static_cast<float>(data[idx + 3]) / 255.f)*scalar_range[1]); // TODO not entirely correct as scalar_range[0] is not considered
+        opacities.push_back((static_cast<float>(data[idx + 3]) / 255.f) * (scalar_range[1] - scalar_range[0]));
         //colors.back() = colors.back() * (1.0f - opacities.back());
     }
     /*using rkcommon::math::vec3f;
