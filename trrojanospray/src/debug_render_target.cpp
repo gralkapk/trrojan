@@ -123,7 +123,12 @@ void debug_render_target::resize(const unsigned int width, const unsigned int he
         "Resizing debug render target "
         "{:p} to [{}, {}].",
         static_cast<void*>(this), width, height);
-    
+        
+    while (this->_wnd.load() == NULL) {
+        log::instance().write_line(log_level::verbose, "Waiting for the "
+                                                       "debug view become available ...");
+    }
+
     // Resize the window to match the requested client area. This must be done
     // before the swap chain is created, because the swap chain is created to
     // match the client area of the window.
@@ -141,8 +146,11 @@ void debug_render_target::resize(const unsigned int width, const unsigned int he
             throw std::system_error(hr, com_category());
         }
 
-        ::SetWindowPos(this->_wnd, HWND_TOP, 0, 0, wndRect.right - wndRect.left, wndRect.bottom - wndRect.top,
-            SWP_NOMOVE | SWP_SHOWWINDOW);
+        if (::SetWindowPos(this->_wnd, HWND_TOP, 0, 0, wndRect.right - wndRect.left, wndRect.bottom - wndRect.top,
+            SWP_NOMOVE | SWP_SHOWWINDOW) == FALSE) {
+            auto hr = __HRESULT_FROM_WIN32(::GetLastError());
+            throw std::system_error(hr, com_category());
+        }
     }
 
     if (this->_swap_chain == nullptr) {
