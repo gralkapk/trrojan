@@ -142,9 +142,9 @@ result sphere_benchmark::on_run(ospray::device& device, const configuration& con
     log::instance().write_line(log_level::debug, "Prewarming ...");
     {
         auto prewarms = (std::max) (1u, cfg.min_prewarms());
-        mctx.cpu_timer.start();
         do {
-            for (std::uint32_t i = 0; i < mctx.cpu_iterations; ++i) {
+            mctx.cpu_timer.start();
+            for (mctx.cpu_iterations = 0; mctx.cpu_iterations < prewarms; ++mctx.cpu_iterations) {
                 auto frame_future = renderer.renderFrame(
                     static_cast<OSPFrameBuffer>(*render_target()), static_cast<OSPCamera>(camera), world.handle());
                 ospWait(frame_future);
@@ -159,26 +159,37 @@ result sphere_benchmark::on_run(ospray::device& device, const configuration& con
 
     // TODO: measure iterations
     log::instance().write_line(
-        log_level::debug, "Measuring CPU timings over {} iterations ...", cfg.counter_iterations());
-    std::vector<float> cpu_times(cfg.counter_iterations());
-    std::atomic_bool rtx_acquired{false};
+        log_level::debug, "Measuring CPU timings over {} iterations ...", mctx.cpu_iterations);
+    std::vector<float> cpu_times(mctx.cpu_iterations);
     auto evt_done = CreateEvent(nullptr, FALSE, FALSE, nullptr);
     if (evt_done == NULL) {
         throw std::system_error(GetLastError(), std::system_category());
     }
     on_exit([evt_done](void) { CloseHandle(evt_done); });
     auto const powerUid = enter_power_scope(
-        power_collector, [&rtx_acquired]() { rtx_acquired.store(true, std::memory_order_release); },
-        [evt_done](const bool) { SetEvent(evt_done); });
+        power_collector,
+        []() {
+            log::instance().write_line(log_level::information, "RTx sample "
+                                                               "acquired.");
+        },
+        [evt_done](const bool) {
+            log::instance().write_line(log_level::information, "RTx sample "
+                                                               "downloaded.");
+            SetEvent(evt_done);
+        });
     std::uint32_t actual_iterations = 0;
-    for (std::uint32_t i = 0; i < cfg.counter_iterations() && !rtx_acquired.load(std::memory_order_acquire);
-        ++i, ++actual_iterations) {
+    for (std::uint32_t i = 0; i < mctx.cpu_iterations; ++i, ++actual_iterations) {
         auto frame_future = renderer.renderFrame(
             static_cast<OSPFrameBuffer>(*render_target()), static_cast<OSPCamera>(camera), world.handle());
         ospWait(frame_future);
         render_target()->present(0);
         cpu_times[i] = ospGetTaskDuration(frame_future);
     }
+    // Make sure that the download of the power data has finished before we
+    // continue to the next benchmark.
+    log::instance().write_line(log_level::debug, "Waiting for "
+                                                 "RTx sample to be downloaded.");
+    ::WaitForSingleObject(evt_done, INFINITE);
     leave_power_scope(power_collector);
 
     render_target()->resetAccumulation();
@@ -195,18 +206,12 @@ result sphere_benchmark::on_run(ospray::device& device, const configuration& con
     auto const cpu_median_s = std::chrono::duration<float>(cpu_median);
 
     auto result = std::make_shared<basic_result>(
-        config, std::initializer_list<std::string>{"benchmark", "powerUid", "iterations", "particles", "data_extents",
+        config, std::initializer_list<std::string>{"benchmark", "powerUid", "actual_iterations", "particles", "data_extents",
                     "cpu_time_min", "cpu_time_med", "cpu_time_max"});
     result->add({this->name(), powerUid, actual_iterations, this->_data.spheres(), this->_data.extents(),
         std::chrono::duration_cast<std::chrono::milliseconds>(cpu_min_s).count(),
         std::chrono::duration_cast<std::chrono::milliseconds>(cpu_median_s).count(),
         std::chrono::duration_cast<std::chrono::milliseconds>(cpu_max_s).count()});
-
-    // Make sure that the download of the power data has finished before we
-    // continue to the next benchmark.
-    log::instance().write_line(log_level::debug, "Waiting for "
-                                                 "RTx sample to be downloaded.");
-    ::WaitForSingleObject(evt_done, INFINITE);
 
     return result;
 }

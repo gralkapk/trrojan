@@ -440,6 +440,7 @@ trrojan::result sphere_rt_benchmark_base::on_run(d3d12::device& device, const co
     gpu_timer::millis_type cpu_time;
     uint64_t powerUid = -1;
     HANDLE evt_done = nullptr;
+    std::uint32_t actual_iterations = 0;
 
     // TODO TEST basic rendering command list
     {
@@ -587,9 +588,9 @@ trrojan::result sphere_rt_benchmark_base::on_run(d3d12::device& device, const co
         {
             auto prewarms = (std::max)(1u, cfg.min_prewarms());
 
-            mctx.cpu_timer.start();
             do {
-                for (std::uint32_t i = 0; i < mctx.cpu_iterations; ++i) {
+                mctx.cpu_timer.start();
+                for (mctx.cpu_iterations = 0; mctx.cpu_iterations < prewarms; ++mctx.cpu_iterations) {
                     auto cmd_list = cmd_lists[this->buffer_index()];
                     device.execute_command_list(cmd_list);
                     present_target(config);
@@ -624,9 +625,20 @@ trrojan::result sphere_rt_benchmark_base::on_run(d3d12::device& device, const co
         }
         on_exit([evt_done](void) { CloseHandle(evt_done); });
         powerUid = enter_power_scope(
-            power_collector, [&rtx_acquired]() { rtx_acquired.store(true, std::memory_order_release); },
-            [evt_done](const bool) { SetEvent(evt_done); });
-        for (std::uint32_t i = 0; i < cfg.gpu_counter_iterations() && !rtx_acquired.load(std::memory_order_acquire); ++i) {
+            power_collector,
+            [&rtx_acquired]() {
+                log::instance().write_line(log_level::information, "RTx sample "
+                                                                   "acquired.");
+                rtx_acquired.store(true, std::memory_order_release);
+            },
+            [evt_done](const bool) {
+                log::instance().write_line(log_level::information, "RTx sample "
+                                                                   "downloaded.");
+                SetEvent(evt_done);
+            });
+        actual_iterations = 0;
+        for (std::uint32_t i = 0; i < cfg.gpu_counter_iterations() && !rtx_acquired.load(std::memory_order_acquire);
+            ++i, ++actual_iterations) {
             log::instance().write_line(log_level::debug,
                 "GPU counter measurement "
                 "#{}.",
@@ -664,6 +676,11 @@ trrojan::result sphere_rt_benchmark_base::on_run(d3d12::device& device, const co
             device.wait_for_gpu();
             gpu_times[i] = gpu_timer::to_milliseconds(mctx.gpu_timer.evaluate(timer_index, 0), gpu_freq);
         }
+        // Make sure that the download of the power data has finished before we
+        // continue to the next benchmark.
+        log::instance().write_line(log_level::debug, "Waiting for "
+                                                     "RTx sample to be downloaded.");
+        ::WaitForSingleObject(evt_done, INFINITE);
         leave_power_scope(power_collector);
 
         // Obtain pipeline statistics.
@@ -708,18 +725,12 @@ trrojan::result sphere_rt_benchmark_base::on_run(d3d12::device& device, const co
     const auto gpu_median = calc_median(gpu_times);
     // Prepare the result set.
     auto retval = std::make_shared<basic_result>(
-        config, std::initializer_list<std::string>{"benchmark", "power_uid", "particles", "data_extents", "gpu_time_min",
+        config, std::initializer_list<std::string>{"benchmark", "powerUid", "actual_iterations", "particles", "data_extents", "gpu_time_min",
                     "gpu_time_med", "gpu_time_max", "wall_time_iterations", "wall_time", "wall_time_avg"});
 
     // Output the results.
-    retval->add({this->name(), powerUid, this->data_.spheres(), this->data_.extents(), gpu_times.front(), gpu_median,
+    retval->add({this->name(), powerUid, actual_iterations, this->data_.spheres(), this->data_.extents(), gpu_times.front(), gpu_median,
         gpu_times.back(), mctx.cpu_iterations, cpu_time, static_cast<double>(cpu_time) / mctx.cpu_iterations});
-
-    // Make sure that the download of the power data has finished before we
-    // continue to the next benchmark.
-    log::instance().write_line(log_level::debug, "Waiting for "
-                                                 "RTx sample to be downloaded.");
-    ::WaitForSingleObject(evt_done, INFINITE);
 
     return retval;
 }
