@@ -93,7 +93,8 @@ void sphere_rt_benchmark_base::on_device_switch(device& device) {
     for (int i = 0; i < pipeline_depth(); ++i) {
         heap_increment_sizes[i] = d3dDevice->GetDescriptorHandleIncrementSize(_descriptor_heaps[i]->GetDesc().Type);
     }
-    heap_increment_sizes.push_back(d3dDevice->GetDescriptorHandleIncrementSize(_descriptor_heaps.back()->GetDesc().Type));
+    heap_increment_sizes.push_back(
+        d3dDevice->GetDescriptorHandleIncrementSize(_descriptor_heaps.back()->GetDesc().Type));
 
     // RayGen constant buffer
     {
@@ -272,11 +273,12 @@ void sphere_rt_benchmark_base::on_device_switch(device& device) {
         throw std::system_error(hr, trrojan::com_category());
     }
     assert(stateObjectProperties != nullptr);
-    
+
     auto sbt_ = ShaderTable();
     sbt_.SetRayGenRecord(
             ShaderRecord(reinterpret_cast<UINT8*>(stateObjectProperties->GetShaderIdentifier(raygenShaderName))))
-        .AddMissRecord(ShaderRecord(reinterpret_cast<UINT8*>(stateObjectProperties->GetShaderIdentifier(missShaderName))))
+        .AddMissRecord(
+            ShaderRecord(reinterpret_cast<UINT8*>(stateObjectProperties->GetShaderIdentifier(missShaderName))))
         .AddHitGroupRecord(
             ShaderRecord(reinterpret_cast<UINT8*>(stateObjectProperties->GetShaderIdentifier(hitGroupName))));
 
@@ -369,8 +371,7 @@ trrojan::result sphere_rt_benchmark_base::on_run(d3d12::device& device, const co
         ray_gen_constants_->viewMatrixInv = DirectX::XMFLOAT4X4(&view_inv[0][0]);
         ray_gen_constants_->projectionMatrixInv = DirectX::XMFLOAT4X4(&proj_inv[0][0]);
         const auto viewport = config.get<benchmark_base::viewport_type>(factor_viewport);
-        ray_gen_constants_->renderTargetSize =
-            DirectX::XMUINT2(viewport[0], viewport[1]);
+        ray_gen_constants_->renderTargetSize = DirectX::XMUINT2(viewport[0], viewport[1]);
         ray_gen_constants_->zNear = _camera.get_near_plane_dist();
         ray_gen_constants_->zFar = _camera.get_far_plane_dist();
     }
@@ -470,8 +471,7 @@ trrojan::result sphere_rt_benchmark_base::on_run(d3d12::device& device, const co
             // dispatch rays
             D3D12_DISPATCH_RAYS_DESC dispatchRaysDesc = {};
             // raygen
-            dispatchRaysDesc.RayGenerationShaderRecord.StartAddress =
-                sbtBuffer_->GetGPUVirtualAddress();
+            dispatchRaysDesc.RayGenerationShaderRecord.StartAddress = sbtBuffer_->GetGPUVirtualAddress();
             dispatchRaysDesc.RayGenerationShaderRecord.SizeInBytes = shader_table_descriptor_.raygen_record_size_;
             // miss
             dispatchRaysDesc.MissShaderTable.StartAddress =
@@ -586,7 +586,7 @@ trrojan::result sphere_rt_benchmark_base::on_run(d3d12::device& device, const co
         // Do prewarming and compute number of CPU iterations at the same time.
         log::instance().write_line(log_level::debug, "Prewarming ...");
         {
-            auto prewarms = (std::max)(1u, cfg.min_prewarms());
+            auto prewarms = (std::max) (1u, cfg.min_prewarms());
 
             do {
                 mctx.cpu_timer.start();
@@ -605,20 +605,6 @@ trrojan::result sphere_rt_benchmark_base::on_run(d3d12::device& device, const co
             "Measuring wall clock "
             "timings over {} iterations ...",
             mctx.cpu_iterations);
-        {
-            mctx.cpu_timer.start();
-            for (std::uint32_t i = 0; i < mctx.cpu_iterations; ++i) {
-                auto cmd_list = cmd_lists[this->buffer_index()];
-                device.execute_command_list(cmd_list);
-                this->present_target(config);
-            }
-            device.wait_for_gpu();
-            cpu_time = mctx.cpu_timer.elapsed_millis();
-        }
-
-        // Do the GPU counter measurements using individual command lists.
-        gpu_times.resize(cfg.gpu_counter_iterations());
-        std::atomic_bool rtx_acquired{false};
         evt_done = CreateEvent(nullptr, FALSE, FALSE, nullptr);
         if (evt_done == NULL) {
             throw std::system_error(GetLastError(), std::system_category());
@@ -626,10 +612,9 @@ trrojan::result sphere_rt_benchmark_base::on_run(d3d12::device& device, const co
         on_exit([evt_done](void) { CloseHandle(evt_done); });
         powerUid = enter_power_scope(
             power_collector,
-            [&rtx_acquired]() {
+            []() {
                 log::instance().write_line(log_level::information, "RTx sample "
                                                                    "acquired.");
-                rtx_acquired.store(true, std::memory_order_release);
             },
             [evt_done](const bool) {
                 log::instance().write_line(log_level::information, "RTx sample "
@@ -637,8 +622,29 @@ trrojan::result sphere_rt_benchmark_base::on_run(d3d12::device& device, const co
                 SetEvent(evt_done);
             });
         actual_iterations = 0;
-        for (std::uint32_t i = 0; i < cfg.gpu_counter_iterations() && !rtx_acquired.load(std::memory_order_acquire);
-            ++i, ++actual_iterations) {
+        {
+            mctx.cpu_timer.start();
+            for (std::uint32_t i = 0; i < mctx.cpu_iterations; ++i, ++actual_iterations) {
+                auto cmd_list = cmd_lists[this->buffer_index()];
+                device.execute_command_list(cmd_list);
+                this->present_target(config);
+                ++(ray_tracing_constants_->frameIdx);
+            }
+            device.wait_for_gpu();
+            cpu_time = mctx.cpu_timer.elapsed_millis();
+        }
+        // Make sure that the download of the power data has finished before we
+        // continue to the next benchmark.
+        log::instance().write_line(log_level::debug, "Waiting for "
+                                                     "RTx sample to be downloaded.");
+        ::WaitForSingleObject(evt_done, INFINITE);
+        leave_power_scope(power_collector);
+
+        ray_tracing_constants_->frameIdx = 0;
+
+        // Do the GPU counter measurements using individual command lists.
+        gpu_times.resize(cfg.gpu_counter_iterations());
+        for (std::uint32_t i = 0; i < cfg.gpu_counter_iterations(); ++i) {
             log::instance().write_line(log_level::debug,
                 "GPU counter measurement "
                 "#{}.",
@@ -647,41 +653,33 @@ trrojan::result sphere_rt_benchmark_base::on_run(d3d12::device& device, const co
             reset_command_list(cmd_list);
 
             auto heap = _descriptor_heaps[this->buffer_index()].get();
-            
+
             cmd_list->SetComputeRootSignature(global_root_sig_.get());
             cmd_list->SetDescriptorHeaps(1, &heap);
 
-            
             mctx.gpu_timer.start_frame();
             mctx.gpu_timer.start(cmd_list.get(), 0);
-            ++(ray_tracing_constants_->frameIdx);
             cmd_list->ExecuteBundle(dxr_bundles[this->buffer_index()].get());
             transition_resource(cmd_list.get(), render_targets_[this->buffer_index()].get(),
-                D3D12_RESOURCE_STATE_COMMON,
-                D3D12_RESOURCE_STATE_COPY_SOURCE);
+                D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_SOURCE);
 
             enable_target(cmd_list.get(), this->buffer_index(), D3D12_RESOURCE_STATE_COPY_DEST);
             //clear_target(cmd_list.get(), this->buffer_index());
             copy_to_target(cmd_list.get(), render_targets_[this->buffer_index()].get(), this->buffer_index());
             disable_target(cmd_list.get(), this->buffer_index(), D3D12_RESOURCE_STATE_COPY_DEST);
 
-            transition_resource(cmd_list.get(), render_targets_[this->buffer_index()].get(), D3D12_RESOURCE_STATE_COPY_SOURCE,
-                D3D12_RESOURCE_STATE_COMMON);
+            transition_resource(cmd_list.get(), render_targets_[this->buffer_index()].get(),
+                D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_COMMON);
             mctx.gpu_timer.end(cmd_list.get(), 0);
             const auto timer_index = mctx.gpu_timer.end_frame(cmd_list.get());
 
             device.close_and_execute_command_list(cmd_list);
             this->present_target(config);
+            ++(ray_tracing_constants_->frameIdx);
 
             device.wait_for_gpu();
             gpu_times[i] = gpu_timer::to_milliseconds(mctx.gpu_timer.evaluate(timer_index, 0), gpu_freq);
         }
-        // Make sure that the download of the power data has finished before we
-        // continue to the next benchmark.
-        log::instance().write_line(log_level::debug, "Waiting for "
-                                                     "RTx sample to be downloaded.");
-        ::WaitForSingleObject(evt_done, INFINITE);
-        leave_power_scope(power_collector);
 
         // Obtain pipeline statistics.
         //log::instance().write_line(log_level::debug, "Collecting pipeline "
@@ -694,7 +692,7 @@ trrojan::result sphere_rt_benchmark_base::on_run(d3d12::device& device, const co
 
         //    cmd_list->SetComputeRootSignature(global_root_sig_.get());
         //    cmd_list->SetDescriptorHeaps(1, &heap);
-        //    
+        //
         //    stats_query.begin_frame();
 
         //    stats_query.begin(cmd_list.get(), 0);
@@ -724,13 +722,14 @@ trrojan::result sphere_rt_benchmark_base::on_run(d3d12::device& device, const co
 
     const auto gpu_median = calc_median(gpu_times);
     // Prepare the result set.
-    auto retval = std::make_shared<basic_result>(
-        config, std::initializer_list<std::string>{"benchmark", "powerUid", "actual_iterations", "particles", "data_extents", "gpu_time_min",
-                    "gpu_time_med", "gpu_time_max", "wall_time_iterations", "wall_time", "wall_time_avg"});
+    auto retval = std::make_shared<basic_result>(config,
+        std::initializer_list<std::string>{"benchmark", "powerUid", "actual_iterations", "particles", "data_extents",
+            "gpu_time_min", "gpu_time_med", "gpu_time_max", "wall_time_iterations", "wall_time", "wall_time_avg"});
 
     // Output the results.
-    retval->add({this->name(), powerUid, actual_iterations, this->data_.spheres(), this->data_.extents(), gpu_times.front(), gpu_median,
-        gpu_times.back(), mctx.cpu_iterations, cpu_time, static_cast<double>(cpu_time) / mctx.cpu_iterations});
+    retval->add({this->name(), powerUid, actual_iterations, this->data_.spheres(), this->data_.extents(),
+        gpu_times.front(), gpu_median, gpu_times.back(), mctx.cpu_iterations, cpu_time,
+        static_cast<double>(cpu_time) / mctx.cpu_iterations});
 
     return retval;
 }
@@ -926,9 +925,7 @@ void sphere_rt_benchmark_base::create_acceleration_structure(
             }
 
             // build top level
-            {
-                dxrCmdList->BuildRaytracingAccelerationStructure(&topLevelBuildDesc, 0, nullptr);
-            }
+            { dxrCmdList->BuildRaytracingAccelerationStructure(&topLevelBuildDesc, 0, nullptr); }
 
             device.close_and_execute_command_list(cmd_list);
             device.wait_for_gpu();
