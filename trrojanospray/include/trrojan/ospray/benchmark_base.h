@@ -7,11 +7,17 @@
 #include "trrojan/ospray/device.h"
 #include "trrojan/ospray/export.h"
 
+#include "trrojan/ospray/bench_render_target.h"
 #include "trrojan/ospray/debug_render_target.h"
 
 namespace trrojan::ospray {
 class TRROJANOSPRAY_API benchmark_base : public trrojan::graphics_benchmark_base {
 public:
+    /// <summary>
+    /// Boolean factor enabling the debug view.
+    /// </summary>
+    static const std::string factor_debug_view;
+
     virtual ~benchmark_base(void) = default;
 
     // Inherited via graphics_benchmark_base
@@ -20,7 +26,7 @@ public:
     // Inherited via graphics_benchmark_base
     result run(const configuration& config) override;
 
-    std::shared_ptr<debug_render_target> render_target(void) const {
+    std::shared_ptr<render_target_base> render_target(void) const {
         return this->_render_target;
     }
 
@@ -36,6 +42,7 @@ protected:
 
 private:
 
-    std::shared_ptr<debug_render_target> _render_target;
+    std::shared_ptr<render_target_base> _debug_target;
+    std::shared_ptr<render_target_base> _render_target;
 };
 } // namespace trrojan::ospray

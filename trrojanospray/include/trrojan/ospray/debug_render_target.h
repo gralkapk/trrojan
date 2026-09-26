@@ -109,6 +109,8 @@ namespace ospray {
         /// </summary>
         void do_msg(void);
 
+        void wait_for_gpu();
+
         winrt::com_ptr<ID3D12Device> _d3d12_device;
         winrt::com_ptr<IDXGIFactory4> _dxgi_factory;
         winrt::com_ptr<ID3D12CommandQueue> _command_queue;

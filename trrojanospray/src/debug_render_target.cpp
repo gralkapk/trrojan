@@ -296,6 +296,16 @@ void debug_render_target::reset_buffers(void) {
     // Make sure that the staging buffer is re-created when the target UAV
     // is requested the next time.
     //this->_staging_buffer = nullptr;
+
+    log::instance().write_line(log_level::debug, "Resetting render target "
+                                                 "buffers.");
+
+    this->wait_for_gpu();
+
+    for (UINT i = 0; i < this->pipeline_depth(); ++i) {
+        this->_buffers[i] = nullptr;
+        this->_fence_values[i] = this->_fence_values[this->_buffer_index];
+    }
 }
 
 winrt::com_ptr<IDXGISwapChain3> debug_render_target::create_swap_chain(HWND hWnd) {
@@ -673,6 +683,46 @@ void debug_render_target::do_msg(void) {
     while (::GetMessage(&msg, NULL, 0, 0)) {
         ::TranslateMessage(&msg);
         ::DispatchMessage(&msg);
+    }
+}
+
+void debug_render_target::wait_for_gpu(void) {
+    assert(this->_command_queue != nullptr);
+    auto& fence_value = this->_fence_values[this->_buffer_index];
+
+    // Make the fence signal in the command queue with the value of the
+    // currently in-flight frame.
+    assert(this->_fence != nullptr);
+    {
+        auto hr = this->_command_queue->Signal(this->_fence.get(), fence_value);
+        if (FAILED(hr)) {
+            throw std::system_error(hr, com_category());
+        }
+    }
+
+    // If the GPU has not reached this value, wait for it.
+    const auto completed_value = this->_fence->GetCompletedValue();
+    if (completed_value < fence_value) {
+        assert(this->_fence_event != NULL);
+        auto hr = this->_fence->SetEventOnCompletion(fence_value, this->_fence_event);
+        if (FAILED(hr)) {
+            throw std::system_error(hr, com_category());
+        }
+
+        // Wait for the event to signal.
+        //wait_for_event(this->_fence_event);
+
+        switch (::WaitForSingleObjectEx(this->_fence_event, INFINITE, FALSE)) {
+        case WAIT_FAILED:
+            throw std::system_error(::GetLastError(), std::system_category());
+
+        default:
+            break;
+        }
+
+        // Increase the fence value for the current frame ('fenceValue'
+        // is a ref!), because the previous value was now consumed.
+        ++fence_value;
     }
 }
 #endif /* !defined(TRROJAN_FOR_UWP) */

@@ -24,6 +24,7 @@ void render_target_base::resize(unsigned int width, unsigned int height) {
 }
 
 unsigned int render_target_base::present(unsigned int sync_interval) {
+    assert(false && "Present is not implemented for OSPRay render targets.");
     return -1;
 }
 
