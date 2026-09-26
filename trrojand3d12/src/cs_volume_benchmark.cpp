@@ -11,6 +11,7 @@
 
 #include "trrojan/com_error_category.h"
 #include "trrojan/io.h"
+#include "trrojan/on_exit.h"
 #include "trrojan/log.h"
 
 #include "trrojan/d3d12/device.h"
@@ -376,7 +377,22 @@ trrojan::result trrojan::d3d12::cs_volume_benchmark::on_run(
     // Do the wall clock measurement using the prepared command lists.
     log::instance().write_line(log_level::debug, "Measuring wall clock "
         "timings over {} iterations ...", mctx.cpu_iterations);
-    const auto power_uid = benchmark_base::enter_power_scope(power_collector);
+    auto rtx_done = ::CreateEvent(nullptr, FALSE, FALSE, nullptr);
+    if (rtx_done == NULL) {
+        throw std::system_error(::GetLastError(), std::system_category());
+    }
+    on_exit([rtx_done](void) { ::CloseHandle(rtx_done); });
+    const auto power_uid = benchmark_base::enter_power_scope(
+        power_collector,
+        [](void) {
+            log::instance().write_line(log_level::information, "RTx sample "
+                                                               "acquired.");
+        },
+        [rtx_done](const bool) {
+            log::instance().write_line(log_level::information, "RTx sample "
+                                                               "downloaded.");
+            ::SetEvent(rtx_done);
+        });
     mctx.cpu_timer.start();
     for (std::uint32_t i = 0; i < mctx.cpu_iterations; ++i) {
         auto cmd_list = cmd_lists[this->buffer_index()];
@@ -385,6 +401,9 @@ trrojan::result trrojan::d3d12::cs_volume_benchmark::on_run(
     }
     device.wait_for_gpu();
     const auto cpu_time = mctx.cpu_timer.elapsed_millis();
+    log::instance().write_line(log_level::debug, "Waiting for "
+                                                 "RTx sample to be downloaded before leaving the power scope.");
+    ::WaitForSingleObject(rtx_done, INFINITE);
     benchmark_base::leave_power_scope(power_collector);
 #endif
 
