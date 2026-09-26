@@ -31,6 +31,7 @@ bool trrojan::d3d12::sphere_data::is_non_float_colour(
     switch (colour) {
         case mmpld::colour_type::rgb8:
         case mmpld::colour_type::rgba8:
+        case mmpld::colour_type::none:
             return true;
 
         default:
@@ -327,7 +328,6 @@ UINT64 trrojan::d3d12::sphere_data::load(
 #endif /* defined(TRROJAN_FOR_UWP) */
         file.open_frame(frame);
         file.read_particles(false, list_header, nullptr, 0);
-        this->set_properties(file.file_header(), list_header);
 
         const auto actual_colour = list_header.colour_type;
         const auto requested_colour
@@ -340,6 +340,8 @@ UINT64 trrojan::d3d12::sphere_data::load(
             // buffer has the correct size.
             list_header.colour_type = requested_colour;
         }
+
+        this->set_properties(file.file_header(), list_header);
 
         retval = mmpld::get_size<UINT64>(list_header);
         auto data = allocator(retval);
