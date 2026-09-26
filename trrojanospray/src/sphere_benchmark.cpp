@@ -60,8 +60,10 @@ result sphere_benchmark::on_run(ospray::device& device, const configuration& con
     // load data
     if (!this->_data) {
         log::instance().write_line(
-            log_level::information, "Loading data set: ", cfg.data_set(), " frame: ", cfg.frame());
+            log_level::information, "Loading data set: {} frame {}", cfg.data_set(), cfg.frame());
         this->_data.load(cfg.data_set(), cfg.frame());
+        log::instance().write_line(
+            log_level::information, "Loaded data set");
     }
 
     ::ospray::cpp::Geometry geometry("sphere");
