@@ -12,7 +12,7 @@
 #include <visus/pwrowg/convert_string.h>
 #include <visus/pwrowg/csv_iomanip.h>
 #include <visus/pwrowg/dump_sensors.h>
-#include <visus/pwrowg/hdf5_sink.h>
+//#include <visus/pwrowg/hdf5_sink.h>
 #include <visus/pwrowg/hmc8015_instrument.h>
 #include <visus/pwrowg/marker_configuration.h>
 #include <visus/pwrowg/msr_configuration.h>
@@ -424,19 +424,21 @@ void trrojan::power_collector::start(
 
     if (record_voltage && record_current) {
         this->_details->sensors = visus::pwrowg::sensor_array::for_matches(
-            std::move(config), visus::pwrowg::is_any_of<visus::pwrowg::is_power_sensor, visus::pwrowg::is_marker_sensor,
+            std::move(config), visus::pwrowg::is_any_of<visus::pwrowg::is_power_sensor, visus::pwrowg::is_time_sensor,
+                                   visus::pwrowg::is_energy_sensor, visus::pwrowg::is_marker_sensor,
                                    visus::pwrowg::is_voltage_sensor, visus::pwrowg::is_current_sensor>);
     } else if (record_voltage) {
-        this->_details->sensors = visus::pwrowg::sensor_array::for_matches(
-            std::move(config), visus::pwrowg::is_any_of<visus::pwrowg::is_power_sensor, visus::pwrowg::is_marker_sensor,
-                                   visus::pwrowg::is_voltage_sensor>);
-    } else if (record_current) {
-        this->_details->sensors = visus::pwrowg::sensor_array::for_matches(
-            std::move(config), visus::pwrowg::is_any_of<visus::pwrowg::is_power_sensor, visus::pwrowg::is_marker_sensor,
-                                   visus::pwrowg::is_current_sensor>);
-    } else {
         this->_details->sensors = visus::pwrowg::sensor_array::for_matches(std::move(config),
-            visus::pwrowg::is_any_of<visus::pwrowg::is_power_sensor, visus::pwrowg::is_marker_sensor>);
+            visus::pwrowg::is_any_of<visus::pwrowg::is_power_sensor, visus::pwrowg::is_time_sensor,
+                visus::pwrowg::is_energy_sensor, visus::pwrowg::is_marker_sensor, visus::pwrowg::is_voltage_sensor>);
+    } else if (record_current) {
+        this->_details->sensors = visus::pwrowg::sensor_array::for_matches(std::move(config),
+            visus::pwrowg::is_any_of<visus::pwrowg::is_power_sensor, visus::pwrowg::is_time_sensor,
+                visus::pwrowg::is_energy_sensor, visus::pwrowg::is_marker_sensor, visus::pwrowg::is_current_sensor>);
+    } else {
+        this->_details->sensors = visus::pwrowg::sensor_array::for_matches(
+            std::move(config), visus::pwrowg::is_any_of<visus::pwrowg::is_power_sensor, visus::pwrowg::is_time_sensor,
+                                   visus::pwrowg::is_energy_sensor, visus::pwrowg::is_marker_sensor>);
     }
 
     {
