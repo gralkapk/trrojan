@@ -305,7 +305,7 @@ trrojan::result sphere_rt_benchmark_base::on_run(d3d12::device& device, const co
     sphere_rt_rendering_configuration cfg{config};
     std::vector<gpu_timer::millis_type> gpu_times;
     const auto gpu_freq = gpu_timer::get_timestamp_frequency(device.command_queue().get());
-    measurement_context mctx(device, 2, this->pipeline_depth());
+    measurement_context mctx(device, 1, this->pipeline_depth());
     stats_query::value_type pipeline_stats;
     stats_query stats_query(device.d3d_device().get(), 1, 1);
 
@@ -421,7 +421,7 @@ trrojan::result sphere_rt_benchmark_base::on_run(d3d12::device& device, const co
 
     std::vector<winrt::com_ptr<ID3D12GraphicsCommandList>> cmd_lists(pipeline_depth());
     std::vector<winrt::com_ptr<ID3D12GraphicsCommandList5>> dxr_cmd_lists(pipeline_depth());
-    std::vector<winrt::com_ptr<ID3D12GraphicsCommandList5>> dxr_bundles(pipeline_depth());
+    //std::vector<winrt::com_ptr<ID3D12GraphicsCommandList5>> dxr_bundles(pipeline_depth());
     for (UINT i = 0; i < pipeline_depth(); ++i) {
         cmd_lists[i] = this->create_graphics_command_list(i);
         std::string name = "RTCommandList_" + std::to_string(i);
@@ -430,11 +430,11 @@ trrojan::result sphere_rt_benchmark_base::on_run(d3d12::device& device, const co
         if (FAILED(hr)) {
             throw std::system_error(hr, trrojan::com_category());
         }
-        auto bundle = this->create_command_list(D3D12_COMMAND_LIST_TYPE_BUNDLE, i);
+        /*auto bundle = this->create_command_list(D3D12_COMMAND_LIST_TYPE_BUNDLE, i);
         hr = bundle->QueryInterface(IID_PPV_ARGS(&dxr_bundles[i]));
         if (FAILED(hr)) {
             throw std::system_error(hr, trrojan::com_category());
-        }
+        }*/
     }
 
 
@@ -511,70 +511,70 @@ trrojan::result sphere_rt_benchmark_base::on_run(d3d12::device& device, const co
         }
 
         // record bundle
-        for (UINT i = 0; i < pipeline_depth(); ++i) {
-            auto& dxr_cmd_list = dxr_bundles[i];
-            auto heap = _descriptor_heaps[i].get();
-            // TODO record commands
-            dxr_cmd_list->SetComputeRootSignature(global_root_sig_.get());
-            dxr_cmd_list->SetDescriptorHeaps(1, &heap);
+        //for (UINT i = 0; i < pipeline_depth(); ++i) {
+        //    auto& dxr_cmd_list = dxr_bundles[i];
+        //    auto heap = _descriptor_heaps[i].get();
+        //    // TODO record commands
+        //    dxr_cmd_list->SetComputeRootSignature(global_root_sig_.get());
+        //    dxr_cmd_list->SetDescriptorHeaps(1, &heap);
 
-            // set resource views
-            // TODO set UAV table
-            dxr_cmd_list->SetComputeRootDescriptorTable(
-                GlobalRootSigParams::OutputViewSlot, heap->GetGPUDescriptorHandleForHeapStart());
-            dxr_cmd_list->SetComputeRootShaderResourceView(
-                GlobalRootSigParams::AccelerationStructureSlot, topLevelBuffer_->GetGPUVirtualAddress());
-            dxr_cmd_list->SetComputeRootConstantBufferView(
-                GlobalRootSigParams::RayGenConstantsSlot, cb_ray_->GetGPUVirtualAddress());
-            dxr_cmd_list->SetComputeRootConstantBufferView(
-                GlobalRootSigParams::RayTracingConstantsSlot, cb_raytracing_->GetGPUVirtualAddress());
-            dxr_cmd_list->SetComputeRootShaderResourceView(
-                GlobalRootSigParams::ParticleBufferSlot, data_.data()->GetGPUVirtualAddress());
+        //    // set resource views
+        //    // TODO set UAV table
+        //    dxr_cmd_list->SetComputeRootDescriptorTable(
+        //        GlobalRootSigParams::OutputViewSlot, heap->GetGPUDescriptorHandleForHeapStart());
+        //    dxr_cmd_list->SetComputeRootShaderResourceView(
+        //        GlobalRootSigParams::AccelerationStructureSlot, topLevelBuffer_->GetGPUVirtualAddress());
+        //    dxr_cmd_list->SetComputeRootConstantBufferView(
+        //        GlobalRootSigParams::RayGenConstantsSlot, cb_ray_->GetGPUVirtualAddress());
+        //    dxr_cmd_list->SetComputeRootConstantBufferView(
+        //        GlobalRootSigParams::RayTracingConstantsSlot, cb_raytracing_->GetGPUVirtualAddress());
+        //    dxr_cmd_list->SetComputeRootShaderResourceView(
+        //        GlobalRootSigParams::ParticleBufferSlot, data_.data()->GetGPUVirtualAddress());
 
-            // set the pipeline state
-            dxr_cmd_list->SetPipelineState1(raytracing_pipeline_.get());
+        //    // set the pipeline state
+        //    dxr_cmd_list->SetPipelineState1(raytracing_pipeline_.get());
 
-            // dispatch rays
-            D3D12_DISPATCH_RAYS_DESC dispatchRaysDesc = {};
-            // raygen
-            dispatchRaysDesc.RayGenerationShaderRecord.StartAddress = sbtBuffer_->GetGPUVirtualAddress();
-            dispatchRaysDesc.RayGenerationShaderRecord.SizeInBytes = shader_table_descriptor_.raygen_record_size_;
-            // miss
-            dispatchRaysDesc.MissShaderTable.StartAddress =
-                sbtBuffer_->GetGPUVirtualAddress() + shader_table_descriptor_.miss_records_offset_;
-            dispatchRaysDesc.MissShaderTable.SizeInBytes = shader_table_descriptor_.miss_records_size_;
-            dispatchRaysDesc.MissShaderTable.StrideInBytes = shader_table_descriptor_.miss_records_stride_;
-            // hitgroup
-            dispatchRaysDesc.HitGroupTable.StartAddress =
-                sbtBuffer_->GetGPUVirtualAddress() + shader_table_descriptor_.hitgroup_records_offset_;
-            dispatchRaysDesc.HitGroupTable.SizeInBytes = shader_table_descriptor_.hitgroup_records_size_;
-            dispatchRaysDesc.HitGroupTable.StrideInBytes = shader_table_descriptor_.hitgroup_records_stride_;
+        //    // dispatch rays
+        //    D3D12_DISPATCH_RAYS_DESC dispatchRaysDesc = {};
+        //    // raygen
+        //    dispatchRaysDesc.RayGenerationShaderRecord.StartAddress = sbtBuffer_->GetGPUVirtualAddress();
+        //    dispatchRaysDesc.RayGenerationShaderRecord.SizeInBytes = shader_table_descriptor_.raygen_record_size_;
+        //    // miss
+        //    dispatchRaysDesc.MissShaderTable.StartAddress =
+        //        sbtBuffer_->GetGPUVirtualAddress() + shader_table_descriptor_.miss_records_offset_;
+        //    dispatchRaysDesc.MissShaderTable.SizeInBytes = shader_table_descriptor_.miss_records_size_;
+        //    dispatchRaysDesc.MissShaderTable.StrideInBytes = shader_table_descriptor_.miss_records_stride_;
+        //    // hitgroup
+        //    dispatchRaysDesc.HitGroupTable.StartAddress =
+        //        sbtBuffer_->GetGPUVirtualAddress() + shader_table_descriptor_.hitgroup_records_offset_;
+        //    dispatchRaysDesc.HitGroupTable.SizeInBytes = shader_table_descriptor_.hitgroup_records_size_;
+        //    dispatchRaysDesc.HitGroupTable.StrideInBytes = shader_table_descriptor_.hitgroup_records_stride_;
 
-            const auto viewport = config.get<benchmark_base::viewport_type>(factor_viewport);
-            dispatchRaysDesc.Width = viewport[0];
-            dispatchRaysDesc.Height = viewport[1];
-            dispatchRaysDesc.Depth = 1;
+        //    const auto viewport = config.get<benchmark_base::viewport_type>(factor_viewport);
+        //    dispatchRaysDesc.Width = viewport[0];
+        //    dispatchRaysDesc.Height = viewport[1];
+        //    dispatchRaysDesc.Depth = 1;
 
-            dxr_cmd_list->DispatchRays(&dispatchRaysDesc);
+        //    dxr_cmd_list->DispatchRays(&dispatchRaysDesc);
 
-            // TODO copy the render target to the back buffer
-            /*transition_resource(dxr_cmd_list.get(), render_targets_[i].get(), D3D12_RESOURCE_STATE_COMMON,
-                D3D12_RESOURCE_STATE_COPY_SOURCE);
+        //    // TODO copy the render target to the back buffer
+        //    /*transition_resource(dxr_cmd_list.get(), render_targets_[i].get(), D3D12_RESOURCE_STATE_COMMON,
+        //        D3D12_RESOURCE_STATE_COPY_SOURCE);
 
-            enable_target(dxr_cmd_list.get(), i, D3D12_RESOURCE_STATE_COPY_DEST);
-            clear_target(dxr_cmd_list.get(), i);
-            copy_to_target(dxr_cmd_list.get(), render_targets_[i].get(), i);
-            disable_target(dxr_cmd_list.get(), i, D3D12_RESOURCE_STATE_COPY_DEST);
+        //    enable_target(dxr_cmd_list.get(), i, D3D12_RESOURCE_STATE_COPY_DEST);
+        //    clear_target(dxr_cmd_list.get(), i);
+        //    copy_to_target(dxr_cmd_list.get(), render_targets_[i].get(), i);
+        //    disable_target(dxr_cmd_list.get(), i, D3D12_RESOURCE_STATE_COPY_DEST);
 
-            transition_resource(dxr_cmd_list.get(), render_targets_[i].get(), D3D12_RESOURCE_STATE_COPY_SOURCE,
-                D3D12_RESOURCE_STATE_COMMON);*/
+        //    transition_resource(dxr_cmd_list.get(), render_targets_[i].get(), D3D12_RESOURCE_STATE_COPY_SOURCE,
+        //        D3D12_RESOURCE_STATE_COMMON);*/
 
-            close_command_list(dxr_cmd_list.get());
-            /*device.close_and_execute_command_list(cmd_lists[i]);
-            present_target(config);
+        //    close_command_list(dxr_cmd_list.get());
+        //    /*device.close_and_execute_command_list(cmd_lists[i]);
+        //    present_target(config);
 
-            device.wait_for_gpu();*/
-        }
+        //    device.wait_for_gpu();*/
+        //}
 
         /*for (UINT i = 0; i < 20000; ++i) {
             auto cmd_list = cmd_lists[this->buffer_index()];
@@ -649,6 +649,7 @@ trrojan::result sphere_rt_benchmark_base::on_run(d3d12::device& device, const co
                 "GPU counter measurement "
                 "#{}.",
                 i);
+#if 0
             auto cmd_list = cmd_lists[this->buffer_index()];
             reset_command_list(cmd_list);
 
@@ -675,6 +676,83 @@ trrojan::result sphere_rt_benchmark_base::on_run(d3d12::device& device, const co
 
             device.close_and_execute_command_list(cmd_list);
             this->present_target(config);
+            ++(ray_tracing_constants_->frameIdx);
+
+            device.wait_for_gpu();
+            gpu_times[i] = gpu_timer::to_milliseconds(mctx.gpu_timer.evaluate(timer_index, 0), gpu_freq);
+#endif
+            auto const buffer_idx = this->buffer_index();
+            auto& dxr_cmd_list = dxr_cmd_lists[buffer_idx];
+
+            reset_command_list(dxr_cmd_list.get());
+
+            mctx.gpu_timer.start_frame();
+            mctx.gpu_timer.start(dxr_cmd_list, 0);
+
+            auto heap = _descriptor_heaps[buffer_idx].get();
+            // TODO record commands
+            dxr_cmd_list->SetComputeRootSignature(global_root_sig_.get());
+            dxr_cmd_list->SetDescriptorHeaps(1, &heap);
+
+            // set resource views
+            // TODO set UAV table
+            dxr_cmd_list->SetComputeRootDescriptorTable(
+                GlobalRootSigParams::OutputViewSlot, heap->GetGPUDescriptorHandleForHeapStart());
+            dxr_cmd_list->SetComputeRootShaderResourceView(
+                GlobalRootSigParams::AccelerationStructureSlot, topLevelBuffer_->GetGPUVirtualAddress());
+            dxr_cmd_list->SetComputeRootConstantBufferView(
+                GlobalRootSigParams::RayGenConstantsSlot, cb_ray_->GetGPUVirtualAddress());
+            dxr_cmd_list->SetComputeRootConstantBufferView(
+                GlobalRootSigParams::RayTracingConstantsSlot, cb_raytracing_->GetGPUVirtualAddress());
+            dxr_cmd_list->SetComputeRootShaderResourceView(
+                GlobalRootSigParams::ParticleBufferSlot, data_.data()->GetGPUVirtualAddress());
+
+            // set the pipeline state
+            dxr_cmd_list->SetPipelineState1(raytracing_pipeline_.get());
+
+            // dispatch rays
+            D3D12_DISPATCH_RAYS_DESC dispatchRaysDesc = {};
+            // raygen
+            dispatchRaysDesc.RayGenerationShaderRecord.StartAddress = sbtBuffer_->GetGPUVirtualAddress();
+            dispatchRaysDesc.RayGenerationShaderRecord.SizeInBytes = shader_table_descriptor_.raygen_record_size_;
+            // miss
+            dispatchRaysDesc.MissShaderTable.StartAddress =
+                sbtBuffer_->GetGPUVirtualAddress() + shader_table_descriptor_.miss_records_offset_;
+            dispatchRaysDesc.MissShaderTable.SizeInBytes = shader_table_descriptor_.miss_records_size_;
+            dispatchRaysDesc.MissShaderTable.StrideInBytes = shader_table_descriptor_.miss_records_stride_;
+            // hitgroup
+            dispatchRaysDesc.HitGroupTable.StartAddress =
+                sbtBuffer_->GetGPUVirtualAddress() + shader_table_descriptor_.hitgroup_records_offset_;
+            dispatchRaysDesc.HitGroupTable.SizeInBytes = shader_table_descriptor_.hitgroup_records_size_;
+            dispatchRaysDesc.HitGroupTable.StrideInBytes = shader_table_descriptor_.hitgroup_records_stride_;
+
+            const auto viewport = config.get<benchmark_base::viewport_type>(factor_viewport);
+            dispatchRaysDesc.Width = viewport[0];
+            dispatchRaysDesc.Height = viewport[1];
+            dispatchRaysDesc.Depth = 1;
+
+            dxr_cmd_list->DispatchRays(&dispatchRaysDesc);
+
+            // TODO copy the render target to the back buffer
+            transition_resource(cmd_lists[buffer_idx].get(), render_targets_[buffer_idx].get(),
+                D3D12_RESOURCE_STATE_COMMON,
+                D3D12_RESOURCE_STATE_COPY_SOURCE);
+
+            enable_target(cmd_lists[buffer_idx].get(), buffer_idx, D3D12_RESOURCE_STATE_COPY_DEST);
+            //clear_target(cmd_lists[i].get(), i);
+            copy_to_target(cmd_lists[buffer_idx].get(), render_targets_[buffer_idx].get(), buffer_idx);
+            disable_target(cmd_lists[buffer_idx].get(), buffer_idx, D3D12_RESOURCE_STATE_COPY_DEST);
+
+            transition_resource(cmd_lists[buffer_idx].get(), render_targets_[buffer_idx].get(),
+                D3D12_RESOURCE_STATE_COPY_SOURCE,
+                D3D12_RESOURCE_STATE_COMMON);
+
+            mctx.gpu_timer.end(dxr_cmd_list.get(), 0);
+            const auto timer_index = mctx.gpu_timer.end_frame(dxr_cmd_list.get());
+
+            device.close_and_execute_command_list(dxr_cmd_list);
+            this->present_target(config);
+
             ++(ray_tracing_constants_->frameIdx);
 
             device.wait_for_gpu();
